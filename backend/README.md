@@ -152,6 +152,18 @@ Entre los endpoints previstos se encuentran:
 
 Las rutas definitivas se acordarán con el equipo de frontend y se ajustarán durante la implementación.
 
+### Endpoints implementados
+
+El primer flujo implementado incluye:
+
+- `POST /api/owners/register`: recibe `fullName`, `email` y `phone`; todos son obligatorios y el email no puede repetirse.
+- `POST /api/boats`: recibe `ownerId`, `registrationNumber`, `name`, `passengerCapacity` y `coverageZone`.
+- La capacidad declarada debe ser un entero entre 1 y 200.
+- Una matrícula se normaliza a mayúsculas y no puede registrarse más de una vez, incluso si cambia el uso de mayúsculas o minúsculas.
+- Un lanchero puede registrar varias embarcaciones; cada embarcación queda pendiente de verificación.
+
+La aplicación habilita `ValidationPipe` global con whitelist y rechazo de propiedades desconocidas. En el entorno local, PostgreSQL se publica en el puerto `5432`, que coincide con el puerto interno del contenedor.
+
 ## 8. Plan de trabajo — 5 semanas
 
 ### Semana 1: Fundamentos
