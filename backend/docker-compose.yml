@@ -7,16 +7,48 @@ services:
     environment:
       POSTGRES_DB: delta_db
       POSTGRES_USER: delta_user
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-delta_password}
     ports:
       - "5432:5432"
     volumes:
       - delta_postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U delta_user -d delta_db"]
       interval: 5s
       timeout: 5s
       retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: delta-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: 3001
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: delta_user
+      DB_PASSWORD: ${DB_PASSWORD:-delta_password}
+      DB_DATABASE: delta_db
+    ports:
+      - "3001:3001"
+
+  adminer:
+    image: adminer:4
+    container_name: delta-adminer
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    ports:
+      - "8080:8080"
 
 volumes:
   delta_postgres_data:
