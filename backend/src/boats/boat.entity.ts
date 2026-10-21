@@ -7,7 +7,7 @@ import {
   PrimaryGeneratedColumn,
   Unique,
 } from 'typeorm';
-import { Owner } from '../owners/owner.entity.js';
+import type { Owner } from '../owners/owner.entity.js';
 
 export enum BoatStatus {
   ACTIVE = 'active',
@@ -26,29 +26,30 @@ export class Boat {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column({ length: 30 })
+  @Column({ name: 'registration_number', length: 30 })
   registrationNumber!: string;
 
   @Column({ length: 120 })
   name!: string;
 
-  @Column({ type: 'integer' })
+  @Column({ name: 'passenger_capacity', type: 'integer' })
   passengerCapacity!: number;
 
-  @Column({ length: 120 })
+  @Column({ name: 'coverage_zone', length: 120 })
   coverageZone!: string;
 
   @Column({ type: 'enum', enum: BoatStatus, default: BoatStatus.ACTIVE })
   status!: BoatStatus;
 
   @Column({
+    name: 'verification_status',
     type: 'enum',
     enum: VerificationStatus,
     default: VerificationStatus.PENDING,
   })
   verificationStatus!: VerificationStatus;
 
-  @ManyToOne(() => Owner, (owner) => owner.boats, {
+  @ManyToOne('Owner', (owner: Owner) => owner.boats, {
     nullable: false,
     onDelete: 'RESTRICT',
   })
@@ -58,6 +59,6 @@ export class Boat {
   @Column({ name: 'owner_id', type: 'uuid' })
   ownerId!: string;
 
-  @CreateDateColumn({ type: 'timestamptz' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 }
