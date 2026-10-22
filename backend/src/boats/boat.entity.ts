@@ -49,6 +49,15 @@ export class Boat {
   })
   verificationStatus!: VerificationStatus;
 
+  @Column({ name: 'verified_by', type: 'uuid', nullable: true })
+  verifiedBy!: string | null;
+
+  @Column({ name: 'verification_reason', type: 'text', nullable: true })
+  verificationReason!: string | null;
+
+  @Column({ name: 'verified_at', type: 'timestamptz', nullable: true })
+  verifiedAt!: Date | null;
+
   @ManyToOne('Owner', (owner: Owner) => owner.boats, {
     nullable: false,
     onDelete: 'RESTRICT',

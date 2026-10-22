@@ -29,6 +29,7 @@ Desde PowerShell, ejecutar:
 ```powershell
 cd C:\Users\Fede\Desktop\No-Country\backend
 Copy-Item .env.example .env
+# Editar .env y reemplazar JWT_SECRET por un valor aleatorio privado.
 docker compose up -d --build
 ```
 
@@ -49,11 +50,13 @@ En Adminer, ingresar con estos datos:
 
 Las migraciones se montan en PostgreSQL y se ejecutan automáticamente cuando se
 crea el volumen por primera vez. Si el volumen ya existía, Docker no vuelve a
-ejecutar los scripts; en ese caso, aplicarlas manualmente:
+ejecutar los scripts; en ese caso, aplicar manualmente solo las migraciones
+pendientes y en orden. Si ya se aplicaron `000` y `001`, ejecutar únicamente:
 
 ```powershell
 Get-Content -Raw .\migrations\000_initial_schema.sql | docker exec -i delta-postgres psql -v ON_ERROR_STOP=1 -U delta_user -d delta_db
 Get-Content -Raw .\migrations\001_add_owner_credentials_and_password_reset.sql | docker exec -i delta-postgres psql -v ON_ERROR_STOP=1 -U delta_user -d delta_db
+Get-Content -Raw .\migrations\002_add_boat_verification_audit.sql | docker exec -i delta-postgres psql -v ON_ERROR_STOP=1 -U delta_user -d delta_db
 ```
 
 Para detener los contenedores:
@@ -472,6 +475,99 @@ El primer flujo implementado incluye:
 - Un lanchero puede registrar varias embarcaciones; cada embarcación queda pendiente de verificación.
 
 La aplicación habilita `ValidationPipe` global con whitelist y rechazo de propiedades desconocidas. En el entorno local, PostgreSQL se publica en el puerto `5432`, que coincide con el puerto interno del contenedor.
+
+## Panel administrativo: lancheros y embarcaciones
+
+El alta de la cuenta del lanchero sigue siendo su propio registro en
+`POST /api/owners/register`. El administrador puede consultar las cuentas ya
+registradas, dar de alta embarcaciones vinculadas a esos lancheros y revisar la
+verificación de cada embarcación. Las nuevas embarcaciones quedan pendientes
+hasta que un administrador las apruebe.
+
+### Crear el primer administrador
+
+1. Configurar `JWT_SECRET` en `.env` con un valor aleatorio y privado. El valor
+   de ejemplo es solo para desarrollo local; no reutilizarlo en producción.
+2. Registrar una cuenta desde `POST /api/owners/register`, como lanchero.
+3. En Adminer, promover únicamente esa cuenta a administradora:
+
+```sql
+UPDATE users
+SET role = 'admin'
+WHERE email = 'admin@example.com';
+```
+
+Verificar el resultado sin consultar ni exponer el hash de la contraseña:
+
+```sql
+SELECT id, name, email, role
+FROM users
+WHERE email = 'admin@example.com';
+```
+
+La API no incluye un endpoint público para asignar roles. La promoción debe
+hacerse solo desde una conexión administrativa confiable a la base de datos.
+
+### Iniciar sesión
+
+```text
+POST http://localhost:3001/api/auth/login
+Content-Type: application/json
+```
+
+```json
+{
+  "email": "admin@example.com",
+  "password": "LaClaveUsadaAlRegistrarse"
+}
+```
+
+La respuesta contiene `accessToken`, válido durante una hora. En los endpoints
+administrativos enviar el token en el encabezado de autorización como Bearer.
+Las cuentas con rol `owner` no pueden iniciar una sesión administrativa.
+
+### Operaciones disponibles
+
+| Método | Endpoint | Uso |
+|---|---|---|
+| GET | `/api/admin/owners` | Listar lancheros registrados, sin incluir hashes de contraseña. |
+| POST | `/api/admin/boats` | Dar de alta una embarcación asociada a un `ownerId` existente. |
+| GET | `/api/admin/boats/pending` | Listar embarcaciones pendientes junto con su propietario. |
+| PATCH | `/api/admin/boats/:id/verification` | Aprobar o rechazar y guardar quién tomó la decisión y cuándo. |
+
+Para dar de alta una embarcación, enviar el mismo cuerpo que a
+`POST /api/boats`, junto con el token administrativo:
+
+```json
+{
+  "ownerId": "UUID-DE-UN-LANCHERO-REGISTRADO",
+  "registrationNumber": "NAU-003",
+  "name": "La Delfina",
+  "passengerCapacity": 8,
+  "coverageZone": "Delta de Tigre"
+}
+```
+
+Aprobar:
+
+```json
+{
+  "status": "approved"
+}
+```
+
+Rechazar requiere un motivo:
+
+```json
+{
+  "status": "rejected",
+  "reason": "La documentación presentada está vencida."
+}
+```
+
+La migración `002_add_boat_verification_audit.sql` agrega el administrador
+responsable, el motivo y la fecha de revisión. Si la base ya existía, aplicarla
+una sola vez antes de usar los nuevos endpoints.
 
 ## Recuperación de contraseña
 

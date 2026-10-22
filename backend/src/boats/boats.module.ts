@@ -9,6 +9,6 @@ import { BoatsService } from './boats.service.js';
   imports: [TypeOrmModule.forFeature([Boat, Owner])],
   controllers: [BoatsController],
   providers: [BoatsService],
-  exports: [TypeOrmModule],
+  exports: [BoatsService, TypeOrmModule],
 })
 export class BoatsModule {}
