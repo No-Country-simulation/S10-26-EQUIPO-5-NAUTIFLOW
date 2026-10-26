@@ -1,0 +1,54 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: nautiflow-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: delta_db
+      POSTGRES_USER: delta_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-delta_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - nautiflow_postgres_data:/var/lib/postgresql/data
+      - ./backend/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U delta_user -d delta_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: nautiflow-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: 3001
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: delta_user
+      DB_PASSWORD: ${DB_PASSWORD:-delta_password}
+      DB_DATABASE: delta_db
+      JWT_SECRET: ${JWT_SECRET:-local-development-secret-change-before-use}
+      FRONTEND_URL: http://localhost:4000,http://localhost:4200
+    ports:
+      - "3001:3001"
+
+  frontend:
+    build:
+      context: ./frontend/front-noCountry
+      dockerfile: Dockerfile
+    container_name: nautiflow-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "4000:4000"
+
+volumes:
+  nautiflow_postgres_data:
