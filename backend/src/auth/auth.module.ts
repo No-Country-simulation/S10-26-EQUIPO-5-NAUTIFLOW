@@ -19,6 +19,6 @@ import { AuthService } from './auth.service.js';
   ],
   controllers: [AuthController],
   providers: [AuthService, AdminAuthGuard],
-  exports: [AdminAuthGuard],
+  exports: [AdminAuthGuard, JwtModule],
 })
 export class AuthModule {}

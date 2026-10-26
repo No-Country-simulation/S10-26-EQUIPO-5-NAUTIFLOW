@@ -1,0 +1,100 @@
+<main class="min-vh-100 py-5">
+  <div class="container">
+    <header class="text-center mb-5">
+      <span class="badge rounded-pill text-bg-info mb-3">NAUTIFLOW</span>
+      <h1 class="display-5 fw-bold">Registra tu operación náutica</h1>
+      <p class="lead text-secondary">Conecta tu perfil de lanchero con tu embarcación de forma simple y segura.</p>
+    </header>
+
+    <div class="row justify-content-center">
+      <div class="col-12 col-lg-9">
+        <div class="card border-0 shadow-lg">
+          <div class="card-body p-4 p-md-5">
+            <div class="d-flex align-items-center mb-4">
+              <div class="step" [class.active]="currentStep >= 1">1</div>
+              <div class="step-line" [class.active]="currentStep >= 2"></div>
+              <div class="step" [class.active]="currentStep >= 2">2</div>
+              <div class="ms-3 text-secondary small">
+                {{ currentStep === 1 ? 'Datos del lanchero' : 'Datos de la lancha' }}
+              </div>
+            </div>
+
+            <div *ngIf="errorMessage" class="alert alert-danger" role="alert">{{ errorMessage }}</div>
+            <div *ngIf="successMessage" class="alert alert-success" role="alert">{{ successMessage }}</div>
+
+            <form *ngIf="currentStep === 1" [formGroup]="ownerForm" (ngSubmit)="registerOwner()" novalidate>
+              <h2 class="h4 mb-4">Datos del lanchero</h2>
+              <div class="row g-3">
+                <div class="col-12">
+                  <label for="fullName" class="form-label">Nombre completo</label>
+                  <input id="fullName" class="form-control" formControlName="fullName" placeholder="Ej. Juan Pérez"
+                    [class.is-invalid]="ownerForm.controls.fullName.touched && ownerForm.controls.fullName.invalid">
+                  <div class="invalid-feedback">Ingresa un nombre válido.</div>
+                </div>
+                <div class="col-md-6">
+                  <label for="email" class="form-label">Correo electrónico</label>
+                  <input id="email" type="email" class="form-control" formControlName="email" placeholder="nombre@correo.com"
+                    [class.is-invalid]="ownerForm.controls.email.touched && ownerForm.controls.email.invalid">
+                  <div class="invalid-feedback">Ingresa un correo válido.</div>
+                </div>
+                <div class="col-md-6">
+                  <label for="phone" class="form-label">Teléfono</label>
+                  <input id="phone" type="tel" class="form-control" formControlName="phone" placeholder="+54 9 11 1234 5678"
+                    [class.is-invalid]="ownerForm.controls.phone.touched && ownerForm.controls.phone.invalid">
+                  <div class="invalid-feedback">Ingresa un teléfono válido.</div>
+                </div>
+                <div class="col-12">
+                  <label for="password" class="form-label">Contraseña</label>
+                  <input id="password" type="password" class="form-control" formControlName="password"
+                    placeholder="Mínimo 12 caracteres"
+                    [class.is-invalid]="ownerForm.controls.password.touched && ownerForm.controls.password.invalid">
+                  <div class="invalid-feedback">La contraseña debe tener entre 12 y 128 caracteres.</div>
+                </div>
+              </div>
+              <button class="btn btn-primary w-100 mt-4" type="submit" [disabled]="isSubmitting">
+                {{ isSubmitting ? 'Guardando...' : 'Continuar con la lancha' }}
+              </button>
+            </form>
+
+            <form *ngIf="currentStep === 2" [formGroup]="boatForm" (ngSubmit)="registerBoat()" novalidate>
+              <h2 class="h4 mb-4">Datos de la lancha</h2>
+              <p class="text-secondary">Lanchero registrado: <strong>{{ registeredOwner?.fullName }}</strong></p>
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <label for="registrationNumber" class="form-label">Matrícula</label>
+                  <input id="registrationNumber" class="form-control" formControlName="registrationNumber" placeholder="ABC-123"
+                    [class.is-invalid]="boatForm.controls.registrationNumber.touched && boatForm.controls.registrationNumber.invalid">
+                  <div class="invalid-feedback">Ingresa la matrícula.</div>
+                </div>
+                <div class="col-md-6">
+                  <label for="name" class="form-label">Nombre de la lancha</label>
+                  <input id="name" class="form-control" formControlName="name" placeholder="Ej. La Estrella"
+                    [class.is-invalid]="boatForm.controls.name.touched && boatForm.controls.name.invalid">
+                  <div class="invalid-feedback">Ingresa el nombre de la lancha.</div>
+                </div>
+                <div class="col-md-6">
+                  <label for="passengerCapacity" class="form-label">Capacidad de pasajeros</label>
+                  <input id="passengerCapacity" type="number" min="1" max="200" class="form-control" formControlName="passengerCapacity"
+                    [class.is-invalid]="boatForm.controls.passengerCapacity.touched && boatForm.controls.passengerCapacity.invalid">
+                  <div class="invalid-feedback">El valor debe estar entre 1 y 200.</div>
+                </div>
+                <div class="col-md-6">
+                  <label for="coverageZone" class="form-label">Zona de cobertura</label>
+                  <input id="coverageZone" class="form-control" formControlName="coverageZone" placeholder="Ej. Delta del Tigre"
+                    [class.is-invalid]="boatForm.controls.coverageZone.touched && boatForm.controls.coverageZone.invalid">
+                  <div class="invalid-feedback">Ingresa la zona de cobertura.</div>
+                </div>
+              </div>
+              <div class="d-flex flex-column flex-sm-row gap-2 mt-4">
+                <button class="btn btn-outline-secondary flex-fill" type="button" (click)="currentStep = 1" [disabled]="isSubmitting">Volver</button>
+                <button class="btn btn-primary flex-fill" type="submit" [disabled]="isSubmitting">
+                  {{ isSubmitting ? 'Guardando...' : 'Registrar lancha' }}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
