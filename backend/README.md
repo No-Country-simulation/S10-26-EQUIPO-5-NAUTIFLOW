@@ -22,6 +22,318 @@ La solución estará orientada a un MVP de cinco semanas, priorizando la segurid
 - **Jest:** pruebas unitarias y de integración.
 - **pnpm:** gestión de dependencias.
 
+## Puesta en marcha local
+
+Desde PowerShell, ejecutar:
+
+```powershell
+cd C:\Users\Fede\Desktop\No-Country\backend
+Copy-Item .env.example .env
+# Editar .env y reemplazar JWT_SECRET por un valor aleatorio privado.
+docker compose up -d --build
+```
+
+El comando anterior inicia:
+
+| Servicio | URL |
+| --- | --- |
+| Backend | <http://localhost:3001> |
+| Adminer | <http://localhost:8080> |
+
+En Adminer, ingresar con estos datos:
+
+- **Sistema:** PostgreSQL
+- **Servidor:** `postgres`
+- **Usuario:** `delta_user`
+- **Contraseña:** `delta_password`
+- **Base de datos:** `delta_db`
+
+Las migraciones se montan en PostgreSQL y se ejecutan automáticamente cuando se
+crea el volumen por primera vez. Si el volumen ya existía, Docker no vuelve a
+ejecutar los scripts; en ese caso, aplicar manualmente solo las migraciones
+pendientes y en orden. Si ya se aplicaron `000` y `001`, ejecutar únicamente:
+
+```powershell
+Get-Content -Raw .\migrations\000_initial_schema.sql | docker exec -i delta-postgres psql -v ON_ERROR_STOP=1 -U delta_user -d delta_db
+Get-Content -Raw .\migrations\001_add_owner_credentials_and_password_reset.sql | docker exec -i delta-postgres psql -v ON_ERROR_STOP=1 -U delta_user -d delta_db
+Get-Content -Raw .\migrations\002_add_boat_verification_audit.sql | docker exec -i delta-postgres psql -v ON_ERROR_STOP=1 -U delta_user -d delta_db
+```
+
+Para detener los contenedores:
+
+```powershell
+docker compose down
+```
+
+La API se puede verificar con `GET http://localhost:3001`.
+
+Para registrar un lanchero desde Postman:
+
+```text
+POST http://localhost:3001/api/owners/register
+Content-Type: application/json
+```
+
+```json
+{
+  "fullName": "Juan Perez",
+  "email": "juan.perez@example.com",
+  "password": "UnaClaveSegura123",
+  "phone": "1123456789"
+}
+```
+
+Usar el `id` de la respuesta como `ownerId` al crear una embarcación:
+
+```text
+POST http://localhost:3001/api/boats
+Content-Type: application/json
+```
+
+```json
+{
+  "ownerId": "uuid-devuelto-por-el-registro",
+  "registrationNumber": "NAU-001",
+  "name": "La Delfina",
+  "passengerCapacity": 8,
+  "coverageZone": "Delta de Tigre"
+}
+```
+
+### Cuerpos para Postman
+
+En todos los requests que envían datos, seleccionar `Body > raw > JSON` y
+agregar el header:
+
+```text
+Content-Type: application/json
+```
+
+#### Registrar un lanchero
+
+```text
+POST http://localhost:3001/api/owners/register
+```
+
+```json
+{
+  "fullName": "Juan Perez",
+  "email": "juan.perez@example.com",
+  "password": "UnaClaveSegura123",
+  "phone": "1123456789"
+}
+```
+
+La contraseña debe tener entre 12 y 128 caracteres. El endpoint devuelve el
+`id` del lanchero, que se utiliza como `ownerId` al crear una embarcación.
+
+#### Crear una embarcación
+
+```text
+POST http://localhost:3001/api/boats
+```
+
+```json
+{
+  "ownerId": "PEGAR-AQUI-EL-ID-DEL-LANCHERO",
+  "registrationNumber": "NAU-002",
+  "name": "La Delfina",
+  "passengerCapacity": 8,
+  "coverageZone": "Delta de Tigre"
+}
+```
+
+`passengerCapacity` debe ser un número entre 1 y 200. El `ownerId` debe ser
+un UUID existente en la tabla `users`.
+
+#### Solicitar recuperación de contraseña
+
+```text
+POST http://localhost:3001/api/owners/password/forgot
+```
+
+```json
+{
+  "email": "juan.perez@example.com"
+}
+```
+
+La respuesta es siempre un mensaje genérico para no revelar si el correo está
+registrado. Cuando `RESEND_API_KEY`, `MAIL_FROM` y `FRONTEND_URL` están
+configurados, el token se envía mediante un enlace al correo.
+
+#### Restablecer contraseña
+
+```text
+POST http://localhost:3001/api/owners/password/reset
+```
+
+```json
+{
+  "token": "TOKEN_RECIBIDO_EN_EL_ENLACE_DEL_EMAIL",
+  "password": "NuevaClaveSegura123"
+}
+```
+
+El token es el valor incluido en el enlace recibido por correo, no el
+`token_hash` almacenado en la base de datos. La nueva contraseña debe tener
+entre 12 y 128 caracteres.
+
+### Consultas para Adminer
+
+Abrir <http://localhost:8080> e ingresar con:
+
+- **Sistema:** `PostgreSQL`
+- **Servidor:** `postgres`
+- **Usuario:** `delta_user`
+- **Contraseña:** `delta_password`
+- **Base de datos:** `delta_db`
+
+Después de iniciar sesión, seleccionar la base `delta_db` y entrar en
+**SQL command**. Estas consultas sirven para inspeccionar los datos creados
+desde Postman.
+
+#### Ver tablas y columnas
+
+```sql
+SELECT table_name
+FROM information_schema.tables
+WHERE table_schema = 'public'
+ORDER BY table_name;
+```
+
+```sql
+SELECT table_name, column_name, data_type
+FROM information_schema.columns
+WHERE table_schema = 'public'
+ORDER BY table_name, ordinal_position;
+```
+
+#### Ver lancheros
+
+No se muestra `password_hash`, porque contiene credenciales almacenadas y no
+debe exponerse innecesariamente.
+
+```sql
+SELECT
+  id,
+  name AS full_name,
+  email,
+  phone,
+  role,
+  created_at
+FROM users
+ORDER BY created_at DESC;
+```
+
+#### Buscar el UUID de un lanchero
+
+```sql
+SELECT id, name AS full_name, email, phone
+FROM users
+WHERE email = 'juan.perez@example.com';
+```
+
+Copiar el valor de `id` de esta consulta para usarlo como `ownerId` en
+Postman.
+
+#### Ver embarcaciones con su propietario
+
+```sql
+SELECT
+  b.id,
+  b.registration_number,
+  b.name,
+  b.passenger_capacity,
+  b.coverage_zone,
+  b.status,
+  b.verification_status,
+  b.created_at,
+  u.id AS owner_id,
+  u.name AS owner_name,
+  u.email AS owner_email
+FROM boats AS b
+INNER JOIN users AS u ON u.id = b.owner_id
+ORDER BY b.created_at DESC;
+```
+
+#### Buscar una embarcación por matrícula
+
+```sql
+SELECT
+  b.registration_number,
+  b.name,
+  b.passenger_capacity,
+  b.coverage_zone,
+  b.status,
+  b.verification_status,
+  u.name AS owner_name,
+  u.email AS owner_email
+FROM boats AS b
+INNER JOIN users AS u ON u.id = b.owner_id
+WHERE b.registration_number = 'NAU-002';
+```
+
+#### Filtrar embarcaciones disponibles y aprobadas
+
+```sql
+SELECT
+  b.registration_number,
+  b.name,
+  b.passenger_capacity,
+  b.coverage_zone,
+  u.name AS owner_name,
+  u.phone AS owner_phone
+FROM boats AS b
+INNER JOIN users AS u ON u.id = b.owner_id
+WHERE b.status = 'active'
+  AND b.verification_status = 'approved'
+ORDER BY b.coverage_zone, b.name;
+```
+
+#### Aprobar o desactivar una embarcación
+
+Estas consultas son para tareas administrativas manuales en Adminer:
+
+```sql
+UPDATE boats
+SET verification_status = 'approved'
+WHERE registration_number = 'NAU-002';
+```
+
+```sql
+UPDATE boats
+SET status = 'inactive'
+WHERE registration_number = 'NAU-002';
+```
+
+Verificar el resultado:
+
+```sql
+SELECT registration_number, status, verification_status
+FROM boats
+WHERE registration_number = 'NAU-002';
+```
+
+#### Ver tokens de recuperación
+
+El `token_hash` no permite reconstruir el token que debe enviarse en Postman.
+Esta consulta solo sirve para comprobar que existe un token pendiente y cuándo
+vence:
+
+```sql
+SELECT
+  id,
+  owner_id,
+  expires_at,
+  created_at
+FROM password_reset_tokens
+ORDER BY created_at DESC;
+```
+
+No editar manualmente `password_hash` ni `token_hash`. El backend genera ambos
+valores de forma segura.
+
 ## 3. Arquitectura propuesta
 
 Se utilizará una arquitectura de monolito modular con NestJS, organizada por dominios funcionales.
@@ -151,6 +463,130 @@ Entre los endpoints previstos se encuentran:
 | GET | `/api/admin/empty-legs` | Consultar retornos disponibles. |
 
 Las rutas definitivas se acordarán con el equipo de frontend y se ajustarán durante la implementación.
+
+### Endpoints implementados
+
+El primer flujo implementado incluye:
+
+- `POST /api/owners/register`: recibe `fullName`, `email` y `phone`; todos son obligatorios y el email no puede repetirse.
+- `POST /api/boats`: recibe `ownerId`, `registrationNumber`, `name`, `passengerCapacity` y `coverageZone`.
+- La capacidad declarada debe ser un entero entre 1 y 200.
+- Una matrícula se normaliza a mayúsculas y no puede registrarse más de una vez, incluso si cambia el uso de mayúsculas o minúsculas.
+- Un lanchero puede registrar varias embarcaciones; cada embarcación queda pendiente de verificación.
+
+La aplicación habilita `ValidationPipe` global con whitelist y rechazo de propiedades desconocidas. En el entorno local, PostgreSQL se publica en el puerto `5432`, que coincide con el puerto interno del contenedor.
+
+## Panel administrativo: lancheros y embarcaciones
+
+El alta de la cuenta del lanchero sigue siendo su propio registro en
+`POST /api/owners/register`. El administrador puede consultar las cuentas ya
+registradas, dar de alta embarcaciones vinculadas a esos lancheros y revisar la
+verificación de cada embarcación. Las nuevas embarcaciones quedan pendientes
+hasta que un administrador las apruebe.
+
+### Crear el primer administrador
+
+1. Configurar `JWT_SECRET` en `.env` con un valor aleatorio y privado. El valor
+   de ejemplo es solo para desarrollo local; no reutilizarlo en producción.
+2. Registrar una cuenta desde `POST /api/owners/register`, como lanchero.
+3. En Adminer, promover únicamente esa cuenta a administradora:
+
+```sql
+UPDATE users
+SET role = 'admin'
+WHERE email = 'admin@example.com';
+```
+
+Verificar el resultado sin consultar ni exponer el hash de la contraseña:
+
+```sql
+SELECT id, name, email, role
+FROM users
+WHERE email = 'admin@example.com';
+```
+
+La API no incluye un endpoint público para asignar roles. La promoción debe
+hacerse solo desde una conexión administrativa confiable a la base de datos.
+
+### Iniciar sesión
+
+```text
+POST http://localhost:3001/api/auth/login
+Content-Type: application/json
+```
+
+```json
+{
+  "email": "admin@example.com",
+  "password": "LaClaveUsadaAlRegistrarse"
+}
+```
+
+La respuesta contiene `accessToken`, válido durante una hora. En los endpoints
+administrativos enviar el token en el encabezado de autorización como Bearer.
+Las cuentas con rol `owner` no pueden iniciar una sesión administrativa.
+
+### Operaciones disponibles
+
+| Método | Endpoint | Uso |
+|---|---|---|
+| GET | `/api/admin/owners` | Listar lancheros registrados, sin incluir hashes de contraseña. |
+| POST | `/api/admin/boats` | Dar de alta una embarcación asociada a un `ownerId` existente. |
+| GET | `/api/admin/boats/pending` | Listar embarcaciones pendientes junto con su propietario. |
+| PATCH | `/api/admin/boats/:id/verification` | Aprobar o rechazar y guardar quién tomó la decisión y cuándo. |
+
+Para dar de alta una embarcación, enviar el mismo cuerpo que a
+`POST /api/boats`, junto con el token administrativo:
+
+```json
+{
+  "ownerId": "UUID-DE-UN-LANCHERO-REGISTRADO",
+  "registrationNumber": "NAU-003",
+  "name": "La Delfina",
+  "passengerCapacity": 8,
+  "coverageZone": "Delta de Tigre"
+}
+```
+
+Aprobar:
+
+```json
+{
+  "status": "approved"
+}
+```
+
+Rechazar requiere un motivo:
+
+```json
+{
+  "status": "rejected",
+  "reason": "La documentación presentada está vencida."
+}
+```
+
+La migración `002_add_boat_verification_audit.sql` agrega el administrador
+responsable, el motivo y la fecha de revisión. Si la base ya existía, aplicarla
+una sola vez antes de usar los nuevos endpoints.
+
+## Recuperación de contraseña
+
+El registro requiere una contraseña de al menos 12 caracteres y la almacena derivada con `scrypt`; el hash no se devuelve en la respuesta. `POST /api/owners/password/forgot` recibe `{ "email": "..." }` y responde igual tanto si la cuenta existe como si no. Para una cuenta existente se genera un token aleatorio de un solo uso, se guarda únicamente su hash y se envía un enlace válido durante 30 minutos. `POST /api/owners/password/reset` recibe `{ "token": "...", "password": "..." }`, actualiza la contraseña y consume el token dentro de una transacción.
+
+Configurar `RESEND_API_KEY`, `MAIL_FROM` y `FRONTEND_URL` en el entorno. El frontend debe implementar `/reset-password`, leer el parámetro `token` y enviar la nueva contraseña al endpoint de reset. La migración `migrations/001_add_owner_credentials_and_password_reset.sql` se debe aplicar antes de desplegar esta versión. El registro actual sigue siendo público; antes de producción debe limitarse o protegerse contra altas no autorizadas.
+
+## Reglas operativas recomendadas
+
+El diagrama define entidades y relaciones, pero no todas las reglas operativas. Para el MVP recomiendo:
+
+- El lanchero puede marcar su embarcación inactiva; solo el administrador puede reactivarla o cambiar la verificación. Una embarcación inactiva conserva sus viajes ya asignados: no se cancelan en silencio, y el administrador los revisa/reasigna.
+- Una modificación de matrícula, capacidad, seguro o cobertura queda como solicitud pendiente. El administrador la acepta o rechaza antes de aplicarla; si afecta seguridad o elegibilidad, la embarcación vuelve a pendiente de revisión.
+- La búsqueda excluye embarcaciones inactivas, no aprobadas o con viaje que se solape con el horario solicitado. La asignación de un viaje a una embarcación inactiva/no aprobada o que incumpla el intervalo mínimo entre viajes se bloquea en backend.
+- Un retorno solo figura como vacío/disponible mientras no tenga pasajeros ni carga y no esté asignado. Si se ocupa, el administrador lo marca como no disponible y deja de aparecer en el dashboard público. Las ediciones permitidas mientras siga disponible son origen, destino y horario; los cambios se reflejan inmediatamente.
+- Al completar un viaje se genera un enlace de reseña único y vencible. El administrador lo comparte manualmente con el turista. Al abrir WhatsApp se prepara un mensaje con origen, destino, fecha/hora, capacidad disponible y contacto; una persona confirma el envío. El teléfono no se publica en listados abiertos.
+- Las solicitudes de modificación deben aparecer en una cola administrativa con aviso en el dashboard; al resolverlas, el lanchero recibe el resultado en su panel y por correo.
+
+Estas reglas son decisiones recomendadas para validar con producto. Las entidades `TRIP`, `EMPTY_LEG`, `BOAT_DOCUMENT` y `REVIEW`, sus endpoints, notificaciones y estas validaciones aún no están implementadas en el backend actual.
 
 ## 8. Plan de trabajo — 5 semanas
 

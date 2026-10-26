@@ -1,0 +1,38 @@
+:host {
+  display: block;
+}
+
+main {
+  background: linear-gradient(135deg, #e8f7ff 0%, #f8fbff 55%, #eef5ff 100%);
+}
+
+.card {
+  border-radius: 1.25rem;
+}
+
+.step {
+  width: 2rem;
+  height: 2rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #6c757d;
+  background: #e9ecef;
+  font-weight: 600;
+}
+
+.step.active {
+  color: #fff;
+  background: #0d6efd;
+}
+
+.step-line {
+  flex: 0 1 5rem;
+  height: 0.2rem;
+  margin: 0 0.5rem;
+  background: #e9ecef;
+}
+
+.step-line.active {
+  background: #0d6efd;
+}
