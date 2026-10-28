@@ -58,6 +58,21 @@ export class Boat {
   @Column({ name: 'verified_at', type: 'timestamptz', nullable: true })
   verifiedAt!: Date | null;
 
+  @Column({ 
+    name: 'image_url', 
+    type: 'text', 
+    nullable: true })
+  imageUrl!: string | null;
+
+  @Column({ name: 'image_public_id', type: 'text', nullable: true })
+  imagePublicId!: string | null;
+
+  @Column({ name: 'image_resource_type',
+     type: 'varchar',
+     length: 10, 
+     nullable: true })
+  imageResourceType!: 'image' | 'raw' | null;
+
   @ManyToOne('Owner', (owner: Owner) => owner.boats, {
     nullable: false,
     onDelete: 'RESTRICT',
