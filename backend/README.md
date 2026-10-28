@@ -65,6 +65,37 @@ Para detener los contenedores:
 docker compose down
 ```
 
+### Ejecución sin Docker
+
+Con PostgreSQL instalado y ejecutándose localmente, crear la base y aplicar las
+migraciones en orden:
+
+```powershell
+cd C:\Users\Fede\Desktop\No-Country\backend
+Copy-Item .env.example .env
+psql -U postgres -c "CREATE USER delta_user WITH PASSWORD 'delta_password';"
+psql -U postgres -c "CREATE DATABASE delta_db OWNER delta_user;"
+Get-ChildItem .\migrations\*.sql | Sort-Object Name | ForEach-Object {
+  Get-Content -Raw $_.FullName | psql -v ON_ERROR_STOP=1 -U delta_user -d delta_db
+}
+pnpm install
+pnpm start:dev
+```
+
+En `.env`, usar `FRONTEND_URL=http://localhost:4200` y completar las variables
+de Cloudinary para habilitar la carga de documentación.
+
+En otra terminal, iniciar Angular:
+
+```powershell
+cd C:\Users\Fede\Desktop\No-Country\frontend\front-noCountry
+npm install
+npm start
+```
+
+El frontend quedará en `http://localhost:4200` y el backend en
+`http://localhost:3001`.
+
 La API se puede verificar con `GET http://localhost:3001`.
 
 Para registrar un lanchero desde Postman:

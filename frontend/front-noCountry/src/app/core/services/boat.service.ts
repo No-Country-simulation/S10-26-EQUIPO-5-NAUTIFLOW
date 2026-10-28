@@ -25,4 +25,8 @@ export class BoatsService {
 
     return this.http.post<Boat>(`${this.apiUrl}/${boatId}/image`, formData);
   }
+
+  uploadDocuments(boatId: string, documents: FormData): Observable<unknown> {
+    return this.http.post(`${this.apiUrl}/${boatId}/documents`, documents);
+  }
 }

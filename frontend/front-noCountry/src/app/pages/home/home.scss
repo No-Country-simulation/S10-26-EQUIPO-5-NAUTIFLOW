@@ -1,38 +1,27 @@
-:host {
-  display: block;
-}
-
-main {
-  background: linear-gradient(135deg, #e8f7ff 0%, #f8fbff 55%, #eef5ff 100%);
-}
-
-.card {
-  border-radius: 1.25rem;
-}
-
-.step {
-  width: 2rem;
-  height: 2rem;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  color: #6c757d;
-  background: #e9ecef;
-  font-weight: 600;
-}
-
-.step.active {
-  color: #fff;
-  background: #0d6efd;
-}
-
-.step-line {
-  flex: 0 1 5rem;
-  height: 0.2rem;
-  margin: 0 0.5rem;
-  background: #e9ecef;
-}
-
-.step-line.active {
-  background: #0d6efd;
-}
+:host { display: block; color: #17324d; }
+.nautiflow-nav { background: #092f4f; }
+.nautiflow-nav .nav-link { color: #d7e8f4; }
+.nautiflow-nav .navbar-brand span, .hero-section h1 span { color: #54d1c1; }
+.hero-section { min-height: 610px; display: flex; align-items: center; padding: 8rem 0 5rem; color: #fff; background: radial-gradient(circle at 80% 20%, #14617a 0, transparent 30%), linear-gradient(120deg, #082f50, #0c4665 55%, #092f4f); }
+.eyebrow { color: #54d1c1; font-size: .75rem; font-weight: 700; letter-spacing: .16em; }
+.hero-section h1 { margin: 1rem 0; font-size: clamp(2.7rem, 6vw, 5rem); line-height: 1.03; font-weight: 800; }
+.hero-copy { max-width: 560px; color: #d7e8f4; font-size: 1.15rem; }
+.btn-primary { border-color: #16a99d; background: #16a99d; }
+.btn-primary:hover { border-color: #0e8d83; background: #0e8d83; }
+.hero-card { min-height: 270px; padding: 2rem; display: flex; flex-direction: column; justify-content: end; border: 1px solid rgba(255,255,255,.25); border-radius: 2rem; background: linear-gradient(145deg, rgba(84,209,193,.8), rgba(8,47,80,.2)), url('/assets/boat.jpg'); background-size: cover; box-shadow: 0 1.5rem 3rem rgba(0,0,0,.2); }
+.hero-card-icon { font-size: 3rem; }
+.features-section { background: #f3f9fc; }
+.feature span { color: #16a99d; font-size: 2rem; font-weight: 700; }
+.feature h2 { font-size: 1.15rem; }
+.feature p, .section-heading p { color: #667b8c; }
+.registration-section { background: #fff; }
+.registration-card { border-radius: 1.25rem; }
+.step { width: 2rem; height: 2rem; display: grid; place-items: center; border-radius: 50%; color: #6c757d; background: #e9ecef; font-weight: 600; }
+.step.active { color: #fff; background: #16a99d; }
+.step-line { flex: 0 1 5rem; height: .2rem; margin: 0 .5rem; background: #e9ecef; }
+.step-line.active { background: #16a99d; }
+.document-upload-card { display: block; cursor: pointer; border: 1px dashed #9bb9d8; border-radius: .9rem; padding: 1.25rem; background: #f8fbff; transition: .2s ease; }
+.document-upload-card:hover, .document-upload-card:focus-within { border-color: #16a99d; background: #eefcfb; }
+.document-icon { display: grid; width: 2rem; height: 2rem; place-items: center; margin-bottom: 1rem; border-radius: 50%; color: #0e8d83; background: #d8f4f0; font-weight: 700; }
+.selected-file { overflow-wrap: anywhere; }
+@media (max-width: 575px) { .hero-section { min-height: 650px; } .nautiflow-nav .nav-link { padding-left: 0; padding-right: .5rem; } }
