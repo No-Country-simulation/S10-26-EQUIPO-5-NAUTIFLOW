@@ -24,9 +24,7 @@ export class CloudinaryService {
     const cloudName = this.configService.getOrThrow<string>(
       'CLOUDINARY_CLOUD_NAME',
     );
-    const apiKey = this.configService.getOrThrow<string>(
-      'CLOUDINARY_API_KEY',
-    );
+    const apiKey = this.configService.getOrThrow<string>('CLOUDINARY_API_KEY');
     const apiSecret = this.configService.getOrThrow<string>(
       'CLOUDINARY_API_SECRET',
     );
@@ -80,6 +78,67 @@ export class CloudinaryService {
             reject(
               new InternalServerErrorException(
                 'Cloudinary no devolvió información de la imagen',
+              ),
+            );
+            return;
+          }
+
+          resolve({
+            secureUrl: result.secure_url,
+            publicId: result.public_id,
+            resourceType,
+            width: result.width,
+            height: result.height,
+            format: result.format,
+            bytes: result.bytes,
+          });
+        },
+      );
+
+      uploadStream.end(file.buffer);
+    });
+  }
+
+  async uploadBoatDocument(
+    file: Express.Multer.File,
+    boatId: string,
+    documentType: string,
+  ): Promise<UploadedImage> {
+    if (!file?.buffer) {
+      throw new BadRequestException('Debe enviarse un documento');
+    }
+
+    const resourceType = file.mimetype === 'application/pdf' ? 'raw' : 'image';
+    const folder = `${this.folder}/documents`;
+
+    return new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          folder,
+          public_id: `boat-${boatId}-${documentType}`,
+          resource_type: resourceType,
+          overwrite: true,
+          invalidate: true,
+        },
+        (error, result) => {
+          if (error) {
+            console.error('Cloudinary document upload error', {
+              message: error.message,
+              name: error.name,
+              http_code: error.http_code,
+            });
+            reject(
+              new InternalServerErrorException(
+                'No se pudo subir el documento a Cloudinary',
+              ),
+            );
+            return;
+          }
+
+          if (!result) {
+            reject(
+              new InternalServerErrorException(
+                'Cloudinary no devolvió información del documento',
               ),
             );
             return;
