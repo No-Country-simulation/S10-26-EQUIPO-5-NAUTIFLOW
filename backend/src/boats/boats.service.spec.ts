@@ -6,7 +6,7 @@ import { BoatDocument } from './boat-document.entity.js';
 import { Boat, BoatStatus, VerificationStatus } from './boat.entity.js';
 import { BoatsService } from './boats.service.js';
 
-describe('BoatsService public catalog', () => {
+describe('BoatsService', () => {
   const boatsRepository = { find: vi.fn() };
   const queryBuilder = {
     addSelect: vi.fn(),
@@ -81,5 +81,17 @@ describe('BoatsService public catalog', () => {
     });
     expect(result[0].owner).not.toHaveProperty('email');
     expect(result[0].owner).not.toHaveProperty('phone');
+  });
+
+  it('includes the owner boat documents in the authenticated boat list', async () => {
+    boatsRepository.find.mockResolvedValue([]);
+
+    await service.listByOwner('owner-id');
+
+    expect(boatsRepository.find).toHaveBeenCalledWith({
+      where: { ownerId: 'owner-id' },
+      relations: { documents: true },
+      order: { createdAt: 'DESC' },
+    });
   });
 });

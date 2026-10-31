@@ -62,6 +62,7 @@ export class BoatsService {
   listByOwner(ownerId: string): Promise<Boat[]> {
     return this.boatsRepository.find({
       where: { ownerId },
+      relations: { documents: true },
       order: { createdAt: 'DESC' },
     });
   }
