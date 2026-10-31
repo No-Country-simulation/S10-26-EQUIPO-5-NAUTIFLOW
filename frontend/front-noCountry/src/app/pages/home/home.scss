@@ -16,6 +16,21 @@
 .feature p, .section-heading p { color: #667b8c; }
 .registration-section { background: #fff; }
 .registration-card { border-radius: 1.25rem; }
+.passenger-section { background: #fff; }
+.passenger-section .section-heading h2 { margin: .4rem 0; color: #17324d; }
+.passenger-search { width: min(100%, 22rem); }
+.boat-result, .account-boat { overflow: hidden; border: 1px solid #dce7ed; border-radius: .75rem; background: #fff; }
+.boat-result img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: #e8f0f3; }
+.boat-result-body, .account-boat { padding: 1.1rem; }
+.boat-result h3, .account-boat h3 { margin: 0; font-size: 1.1rem; }
+.boat-result p, .account-boat p { margin: .5rem 0 0; color: #667b8c; }
+.boat-capacity, .verification-status { color: #087c72; font-size: .82rem; font-weight: 700; white-space: nowrap; }
+.catalog-empty { padding: 1rem 1.25rem; border-left: 3px solid #16a99d; color: #667b8c; background: #f3f9fc; }
+.account-section { background: #f3f9fc; }
+.account-section h2 { color: #17324d; }
+.account-section .table { background: #fff; }
+.owner-row { display: flex; flex-direction: column; padding: .8rem 1rem; border: 1px solid #dce7ed; border-radius: .5rem; background: #fff; }
+.owner-row span { color: #667b8c; font-size: .9rem; overflow-wrap: anywhere; }
 .step { width: 2rem; height: 2rem; display: grid; place-items: center; border-radius: 50%; color: #6c757d; background: #e9ecef; font-weight: 600; }
 .step.active { color: #fff; background: #16a99d; }
 .step-line { flex: 0 1 5rem; height: .2rem; margin: 0 .5rem; background: #e9ecef; }
@@ -24,4 +39,5 @@
 .document-upload-card:hover, .document-upload-card:focus-within { border-color: #16a99d; background: #eefcfb; }
 .document-icon { display: grid; width: 2rem; height: 2rem; place-items: center; margin-bottom: 1rem; border-radius: 50%; color: #0e8d83; background: #d8f4f0; font-weight: 700; }
 .selected-file { overflow-wrap: anywhere; }
-@media (max-width: 575px) { .hero-section { min-height: 650px; } .nautiflow-nav .nav-link { padding-left: 0; padding-right: .5rem; } }
+.auth-feedback { position: fixed; top: 5.5rem; right: 1rem; z-index: 1100; max-width: min(32rem, calc(100vw - 2rem)); }
+@media (max-width: 575px) { .hero-section { min-height: 650px; } .nautiflow-nav .nav-link { padding-left: 0; padding-right: .5rem; } .nautiflow-nav .navbar-brand { font-size: 1.35rem !important; } .boat-capacity { white-space: normal; text-align: right; } }

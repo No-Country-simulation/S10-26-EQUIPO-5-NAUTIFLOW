@@ -5,10 +5,13 @@ import {
   FormBuilder,
   FormControl,
   FormGroup,
+  FormsModule,
   ReactiveFormsModule,
   Validators,
 } from '@angular/forms';
+import { ActivatedRoute } from '@angular/router';
 import { BoatsService } from '../../core/services/boat.service';
+import type { Boat } from '../../core/services/boat.service';
 
 interface OwnerResponse {
   id: string;
@@ -20,6 +23,22 @@ interface BoatResponse {
   id: string;
   name: string;
   registrationNumber: string;
+}
+
+interface AccountResponse {
+  accessToken: string;
+  user?: { id: string; fullName: string; email: string; role: string };
+  admin?: { id: string; fullName: string; email: string };
+}
+
+interface AdminBoat extends Boat {
+  owner?: { fullName: string; email: string };
+  documents?: {
+    id: string;
+    type: DocumentType;
+    fileUrl: string;
+    originalName: string;
+  }[];
 }
 
 type DocumentType = 'license' | 'insurance' | 'criminalRecord';
@@ -42,7 +61,7 @@ type LoginForm = FormGroup<{
 type ForgotForm = FormGroup<{ email: FormControl<string> }>;
 
 @Component({
-  imports: [CommonModule, ReactiveFormsModule],
+  imports: [CommonModule, FormsModule, ReactiveFormsModule],
   selector: 'app-home',
   styleUrl: './home.scss',
   templateUrl: './home.html',
@@ -59,10 +78,26 @@ export class Home {
   successMessage = '';
   loginError = '';
   loginSuccess = '';
+  authSuccessMessage = '';
+  showOwnerPassword = false;
+  showLoginPassword = false;
   forgotError = '';
   forgotSuccess = '';
   registeredOwner?: OwnerResponse;
   registeredBoat?: BoatResponse;
+  currentUser?: { id: string; fullName: string; email: string };
+  userRole: 'owner' | 'admin' | null = null;
+  loginRole: 'owner' | 'admin' = 'owner';
+  myBoats: Boat[] = [];
+  availableBoats: Boat[] = [];
+  filteredAvailableBoats: Boat[] = [];
+  isLoadingAvailableBoats = false;
+  catalogError = '';
+  pendingBoats: AdminBoat[] = [];
+  documentedCapacities: Record<string, number | null> = {};
+  adminOwners: { id: string; fullName: string; email: string }[] = [];
+  accountError = '';
+  passengerSearch = '';
   showDocumentsModal = false;
   isUploadingDocuments = false;
   documentsError = '';
@@ -85,15 +120,30 @@ export class Home {
     private readonly formBuilder: FormBuilder,
     private readonly http: HttpClient,
     private readonly boatsService: BoatsService,
+    route: ActivatedRoute,
     @Inject(PLATFORM_ID) platformId: object,
   ) {
     this.isBrowser = isPlatformBrowser(platformId);
     this.apiUrl = this.isBrowser
       ? `${window.location.protocol}//${window.location.hostname}:3001/api`
       : 'http://backend:3001/api';
+    if (this.isBrowser) {
+      this.restoreSession();
+    }
+    if (this.isBrowser) this.loadAvailableBoats();
     this.ownerForm = this.formBuilder.nonNullable.group({
       fullName: ['', [Validators.required, Validators.minLength(2), Validators.maxLength(120)]],
-      email: ['', [Validators.required, Validators.email, Validators.maxLength(320)]],
+      email: [
+        '',
+        [
+          Validators.required,
+          Validators.email,
+          Validators.pattern(
+            /^[A-Z0-9._%+-]+@(gmail\.com|hotmail\.com|outlook\.com)$/i,
+          ),
+          Validators.maxLength(320),
+        ],
+      ],
       phone: ['', [Validators.required, Validators.minLength(6), Validators.maxLength(30)]],
       password: ['', [Validators.required, Validators.minLength(12), Validators.maxLength(128)]],
     });
@@ -110,18 +160,40 @@ export class Home {
     this.forgotForm = this.formBuilder.nonNullable.group({
       email: ['', [Validators.required, Validators.email]],
     });
+    if (route.snapshot.queryParamMap.get('forgot') === '1') {
+      this.openForgot();
+    }
   }
 
   openRegistration(): void {
     this.errorMessage = '';
     this.successMessage = '';
+    this.authSuccessMessage = '';
     this.activeModal = 'register';
   }
 
   openLogin(): void {
     this.loginError = '';
     this.loginSuccess = '';
+    this.authSuccessMessage = '';
     this.activeModal = 'login';
+  }
+
+  toggleOwnerPasswordVisibility(): void {
+    this.showOwnerPassword = !this.showOwnerPassword;
+  }
+
+  toggleLoginPasswordVisibility(): void {
+    this.showLoginPassword = !this.showLoginPassword;
+  }
+
+  dismissAuthSuccess(): void {
+    this.authSuccessMessage = '';
+  }
+
+  selectLoginRole(role: 'owner' | 'admin'): void {
+    this.loginRole = role;
+    this.loginError = '';
   }
 
   openForgot(): void {
@@ -151,7 +223,8 @@ export class Home {
         this.registeredOwner = owner;
         this.currentStep = 2;
         this.isSubmitting = false;
-        this.successMessage = 'Datos cargados exitosamente. Ahora registra tu lancha.';
+        this.successMessage =
+          'Registro de lanchero exitoso. Ahora registra tu lancha.';
       },
       error: (error: HttpErrorResponse) => this.handleError(error, this.ownerForm),
     });
@@ -234,14 +307,23 @@ export class Home {
       return;
     }
     this.isLoginSubmitting = true;
-    this.http.post<{ accessToken: string; admin?: { role?: string } }>(`${this.apiUrl}/auth/login`, this.loginForm.getRawValue()).subscribe({
+    const endpoint = this.loginRole === 'admin' ? 'login' : 'owner-login';
+    this.http.post<AccountResponse>(`${this.apiUrl}/auth/${endpoint}`, this.loginForm.getRawValue()).subscribe({
       next: (response) => {
         this.isLoginSubmitting = false;
+        const account = response.user ?? response.admin;
+        const role = this.loginRole;
         if (this.isBrowser) {
           localStorage.setItem('nautiflow_access_token', response.accessToken);
-          localStorage.setItem('nautiflow_role', response.admin?.role ?? 'admin');
+          localStorage.setItem('nautiflow_role', role);
+          if (account) localStorage.setItem('nautiflow_user', JSON.stringify(account));
         }
+        this.currentUser = account;
+        this.userRole = role;
+        this.loadAccountData();
         this.loginSuccess = 'Inicio de sesión exitoso.';
+        this.authSuccessMessage = this.loginSuccess;
+        this.activeModal = null;
         this.loginForm.reset();
       },
       error: (error: HttpErrorResponse) => {
@@ -250,6 +332,139 @@ export class Home {
         this.loginError = this.messageFromError(error);
       },
     });
+  }
+
+  logout(): void {
+    this.authSuccessMessage = '';
+    if (this.isBrowser) {
+      localStorage.removeItem('nautiflow_access_token');
+      localStorage.removeItem('nautiflow_role');
+      localStorage.removeItem('nautiflow_user');
+    }
+    this.currentUser = undefined;
+    this.userRole = null;
+    this.myBoats = [];
+    this.pendingBoats = [];
+    this.adminOwners = [];
+  }
+
+  filterAvailableBoats(): void {
+    const search = this.passengerSearch.trim().toLowerCase();
+    this.filteredAvailableBoats = search
+      ? this.availableBoats.filter((boat) =>
+          `${boat.name} ${boat.coverageZone}`.toLowerCase().includes(search),
+        )
+      : this.availableBoats;
+  }
+
+  trackById<T extends { id: string }>(_index: number, item: T): string {
+    return item.id;
+  }
+
+  verifyBoat(boatId: string, status: 'approved' | 'rejected'): void {
+    const token = this.getAccessToken();
+    if (!token) return;
+    const documentedPassengerCapacity = this.documentedCapacities[boatId];
+    if (
+      status === 'approved' &&
+      (documentedPassengerCapacity === null ||
+        documentedPassengerCapacity === undefined)
+    ) {
+      this.accountError =
+        'Ingresa la capacidad que figura en la licencia antes de aprobar.';
+      return;
+    }
+    this.accountError = '';
+    this.http.patch<AdminBoat>(`${this.apiUrl}/admin/boats/${boatId}/verification`, {
+      status,
+      reason: status === 'rejected' ? 'Documentación incompleta o inválida.' : undefined,
+      documentedPassengerCapacity: documentedPassengerCapacity ?? undefined,
+    }, { headers: { Authorization: `Bearer ${token}` } }).subscribe({
+      next: () => this.loadAdminData(),
+      error: (error: HttpErrorResponse) => {
+        this.accountError = this.messageFromError(error);
+      },
+    });
+  }
+
+  setDocumentedCapacity(boatId: string, value: string | number): void {
+    const capacity = Number(value);
+    this.documentedCapacities[boatId] =
+      value === '' ||
+      !Number.isInteger(capacity) ||
+      capacity < 1 ||
+      capacity > 200
+        ? null
+        : capacity;
+  }
+
+  private restoreSession(): void {
+    const role = localStorage.getItem('nautiflow_role');
+    const accessToken = localStorage.getItem('nautiflow_access_token');
+    const serializedUser = localStorage.getItem('nautiflow_user');
+    if (!accessToken || (role !== 'owner' && role !== 'admin')) return;
+    this.userRole = role;
+    if (serializedUser) {
+      try {
+        this.currentUser = JSON.parse(serializedUser) as NonNullable<typeof this.currentUser>;
+      } catch {
+        localStorage.removeItem('nautiflow_user');
+      }
+    }
+    this.loadAccountData();
+  }
+
+  private getAccessToken(): string | null {
+    return this.isBrowser ? localStorage.getItem('nautiflow_access_token') : null;
+  }
+
+  private loadAccountData(): void {
+    const token = this.getAccessToken();
+    if (!token) return;
+    if (this.userRole === 'owner') {
+      this.boatsService.listMine(token).subscribe({
+        next: (boats) => this.myBoats = boats,
+        error: (error: HttpErrorResponse) => this.accountError = this.messageFromError(error),
+      });
+    } else if (this.userRole === 'admin') {
+      this.loadAdminData();
+    }
+  }
+
+  private loadAdminData(): void {
+    const token = this.getAccessToken();
+    if (!token) return;
+    const headers = { Authorization: `Bearer ${token}` };
+    this.http.get<AdminBoat[]>(`${this.apiUrl}/admin/boats/pending`, { headers }).subscribe({
+      next: (boats) => this.pendingBoats = boats,
+      error: (error: HttpErrorResponse) => this.accountError = this.messageFromError(error),
+    });
+    this.http.get<{ id: string; fullName: string; email: string }[]>(`${this.apiUrl}/admin/owners`, { headers }).subscribe({
+      next: (owners) => this.adminOwners = owners,
+      error: (error: HttpErrorResponse) => this.accountError = this.messageFromError(error),
+    });
+  }
+
+  private loadAvailableBoats(): void {
+    this.isLoadingAvailableBoats = true;
+    this.catalogError = '';
+    this.boatsService.listAvailable().subscribe({
+      next: (boats) => {
+        this.availableBoats = boats;
+        this.filterAvailableBoats();
+        this.isLoadingAvailableBoats = false;
+      },
+      error: (error: HttpErrorResponse) => {
+        this.availableBoats = [];
+        this.filteredAvailableBoats = [];
+        this.catalogError = this.messageFromError(error);
+        this.isLoadingAvailableBoats = false;
+      },
+    });
+  }
+
+  retryAvailableBoats(): void {
+    this.loadAvailableBoats();
   }
 
   requestPasswordReset(): void {
@@ -319,6 +534,13 @@ export class Home {
         this.isUploadingDocuments = false;
         this.documentsSuccess = 'Archivos cargados exitosamente. Quedaron pendientes de revisión.';
         this.successMessage = 'La lancha y su documentación fueron registradas exitosamente.';
+        this.selectedDocuments = {};
+        if (this.isBrowser) {
+          this.documentTypes.forEach(({ key }) => {
+            const input = document.getElementById(`document-${key}`) as HTMLInputElement | null;
+            if (input) input.value = '';
+          });
+        }
       },
       error: (error: HttpErrorResponse) => {
         this.isUploadingDocuments = false;
