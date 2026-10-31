@@ -7,6 +7,7 @@ import {
   ParseFilePipeBuilder,
   ParseUUIDPipe,
   Post,
+  Query,
   UploadedFile,
   UseInterceptors,
   UploadedFiles,
@@ -23,6 +24,7 @@ import { CreateBoatDto } from './dto/create-boat.dto.js';
 import { BoatsService } from './boats.service.js';
 import { BoatDocumentType } from './boat-document.entity.js';
 import { OwnerAuthGuard } from '../auth/owner-auth.guard.js';
+import { SearchBoatsDto } from './dto/search-boats.dto.js';
 
 interface AuthenticatedRequest extends Request {
   user: { sub: string };
@@ -33,8 +35,8 @@ export class BoatsController {
   constructor(private readonly boatsService: BoatsService) {}
 
   @Get()
-  listAvailable() {
-    return this.boatsService.listAvailable();
+  listAvailable(@Query() filters: SearchBoatsDto) {
+    return this.boatsService.listAvailable(filters);
   }
 
   @Get('mine')

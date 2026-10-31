@@ -180,4 +180,21 @@ describe('Home approval and owner registration', () => {
     expect(home.registeredBoat?.documents?.[0].originalName).toBe('license.pdf');
     fixture.destroy();
   });
+
+  it('requests catalogue results with capacity, zone, and availability filters', () => {
+    const fixture = TestBed.createComponent(Home);
+    const home = fixture.componentInstance;
+    home.minPassengerCapacity = 6;
+    home.coverageZoneFilter = ' Delta ';
+    home.availabilityFilter = 'available';
+
+    home.searchAvailableBoats();
+
+    expect(boatsService.listAvailable).toHaveBeenCalledWith({
+      minCapacity: 6,
+      zone: 'Delta',
+      availability: 'available',
+    });
+    fixture.destroy();
+  });
 });

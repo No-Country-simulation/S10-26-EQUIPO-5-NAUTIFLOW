@@ -11,7 +11,11 @@ import {
 } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { BoatsService } from '../../core/services/boat.service';
-import type { Boat, BoatDocument } from '../../core/services/boat.service';
+import type {
+  Boat,
+  BoatDocument,
+  BoatSearchFilters,
+} from '../../core/services/boat.service';
 
 interface OwnerResponse {
   id: string;
@@ -129,6 +133,9 @@ export class Home {
   adminOwners: { id: string; fullName: string; email: string }[] = [];
   accountError = '';
   passengerSearch = '';
+  minPassengerCapacity: number | null = null;
+  coverageZoneFilter = '';
+  availabilityFilter: 'all' | 'available' | 'unavailable' = 'all';
   passengerBookings: PassengerBooking[] = [];
   bookingError = '';
   bookingSuccess = '';
@@ -490,6 +497,20 @@ export class Home {
       : this.availableBoats;
   }
 
+  searchAvailableBoats(): void {
+    const filters: BoatSearchFilters = {};
+    if (this.minPassengerCapacity !== null) {
+      filters.minCapacity = this.minPassengerCapacity;
+    }
+    if (this.coverageZoneFilter.trim()) {
+      filters.zone = this.coverageZoneFilter.trim();
+    }
+    if (this.availabilityFilter !== 'all') {
+      filters.availability = this.availabilityFilter;
+    }
+    this.loadAvailableBoats(filters);
+  }
+
   trackById<T extends { id: string }>(_index: number, item: T): string {
     return item.id;
   }
@@ -528,13 +549,13 @@ export class Home {
         next: () => {
           this.reservingBoatId = null;
           this.bookingSuccess = `Tu plaza en ${boat.name} quedó registrada.`;
-          this.loadAvailableBoats();
+          this.searchAvailableBoats();
           this.loadPassengerBookings();
         },
         error: (error: HttpErrorResponse) => {
           this.reservingBoatId = null;
           this.bookingError = this.messageFromError(error);
-          this.loadAvailableBoats();
+          this.searchAvailableBoats();
         },
       });
   }
@@ -558,7 +579,7 @@ export class Home {
           this.submittingFeedbackId = null;
           this.bookingSuccess = 'Gracias por compartir tu opinión del lanchero.';
           this.loadPassengerBookings();
-          this.loadAvailableBoats();
+          this.searchAvailableBoats();
         },
         error: (error: HttpErrorResponse) => {
           this.submittingFeedbackId = null;
@@ -600,7 +621,7 @@ export class Home {
             : 'Revisión de la embarcación rechazada.';
         this.verifyingBoatId = null;
         this.loadAdminData();
-        if (status === 'approved') this.loadAvailableBoats();
+        if (status === 'approved') this.searchAvailableBoats();
       },
       error: (error: HttpErrorResponse) => {
         this.verifyingBoatId = null;
@@ -716,10 +737,10 @@ export class Home {
     });
   }
 
-  private loadAvailableBoats(): void {
+  private loadAvailableBoats(filters: BoatSearchFilters = {}): void {
     this.isLoadingAvailableBoats = true;
     this.catalogError = '';
-    this.boatsService.listAvailable().subscribe({
+    this.boatsService.listAvailable(filters).subscribe({
       next: (boats) => {
         this.availableBoats = boats;
         this.filterAvailableBoats();
@@ -735,7 +756,7 @@ export class Home {
   }
 
   retryAvailableBoats(): void {
-    this.loadAvailableBoats();
+    this.searchAvailableBoats();
   }
 
   requestPasswordReset(): void {

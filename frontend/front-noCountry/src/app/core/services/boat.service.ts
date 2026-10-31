@@ -1,6 +1,6 @@
 import { isPlatformBrowser } from '@angular/common';
 import { Injectable, inject, PLATFORM_ID } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
 export interface Boat {
@@ -25,6 +25,12 @@ export interface BoatDocument {
   fileUrl: string;
   originalName: string;
   verificationStatus: string;
+}
+
+export interface BoatSearchFilters {
+  minCapacity?: number;
+  zone?: string;
+  availability?: 'available' | 'unavailable';
 }
 
 @Injectable({
@@ -62,7 +68,17 @@ export class BoatsService {
     });
   }
 
-  listAvailable(): Observable<Boat[]> {
-    return this.http.get<Boat[]>(this.apiUrl);
+  listAvailable(filters: BoatSearchFilters = {}): Observable<Boat[]> {
+    let params = new HttpParams();
+    if (filters.minCapacity !== undefined) {
+      params = params.set('minCapacity', filters.minCapacity);
+    }
+    if (filters.zone?.trim()) {
+      params = params.set('zone', filters.zone.trim());
+    }
+    if (filters.availability) {
+      params = params.set('availability', filters.availability);
+    }
+    return this.http.get<Boat[]>(this.apiUrl, { params });
   }
 }

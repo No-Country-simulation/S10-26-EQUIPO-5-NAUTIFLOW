@@ -52,7 +52,31 @@
           <h2>Encuentra tu próxima salida</h2>
           <p>Explora embarcaciones verificadas disponibles en tu zona.</p>
         </div>
-        <label class="passenger-search"><span class="visually-hidden">Buscar por destino o embarcación</span><input class="form-control" type="search" [(ngModel)]="passengerSearch" (ngModelChange)="filterAvailableBoats()" placeholder="Destino o embarcación" /></label>
+      </div>
+      <div class="row g-3 align-items-end mb-4" aria-label="Filtros de embarcaciones">
+        <div class="col-12 col-md-6 col-xl-3">
+          <label class="form-label" for="catalog-search">Destino o embarcación</label>
+          <input id="catalog-search" class="form-control" type="search" [(ngModel)]="passengerSearch" (ngModelChange)="filterAvailableBoats()" placeholder="Buscar destino o nombre" />
+        </div>
+        <div class="col-12 col-md-6 col-xl-3">
+          <label class="form-label" for="catalog-zone">Zona</label>
+          <input id="catalog-zone" class="form-control" type="search" [(ngModel)]="coverageZoneFilter" placeholder="Ej. Delta del Tigre" />
+        </div>
+        <div class="col-6 col-md-4 col-xl-2">
+          <label class="form-label" for="catalog-capacity">Capacidad mínima</label>
+          <input id="catalog-capacity" class="form-control" type="number" min="1" max="200" [(ngModel)]="minPassengerCapacity" />
+        </div>
+        <div class="col-6 col-md-4 col-xl-2">
+          <label class="form-label" for="catalog-availability">Disponibilidad</label>
+          <select id="catalog-availability" class="form-select" [(ngModel)]="availabilityFilter">
+            <option value="all">Todas</option>
+            <option value="available">Con plazas</option>
+            <option value="unavailable">Sin plazas</option>
+          </select>
+        </div>
+        <div class="col-12 col-md-4 col-xl-2 d-grid">
+          <button class="btn btn-primary" type="button" (click)="searchAvailableBoats()">Aplicar filtros</button>
+        </div>
       </div>
       <p *ngIf="isLoadingAvailableBoats" class="catalog-empty" role="status">Cargando embarcaciones...</p>
       <div *ngIf="bookingError" class="alert alert-danger" role="alert">{{ bookingError }}</div>

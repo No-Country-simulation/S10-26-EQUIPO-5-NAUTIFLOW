@@ -160,7 +160,25 @@ Body JSON:
 
 ---
 
-### 4) Subir imagen o PDF a una embarcación
+### 4) Buscar embarcaciones aprobadas
+
+```http
+GET /api/boats?minCapacity=6&zone=Delta&availability=available
+```
+
+La búsqueda es pública y solo devuelve embarcaciones activas y aprobadas.
+Todos los filtros son opcionales:
+
+- `minCapacity`: capacidad total mínima (de 1 a 200 pasajeros).
+- `zone`: coincidencia parcial, sin distinguir mayúsculas.
+- `availability`: `available` para embarcaciones con plazas libres o
+  `unavailable` para las que no tienen plazas.
+
+Sin filtros, el catálogo devuelve todas las embarcaciones activas y aprobadas.
+
+---
+
+### 5) Subir imagen o PDF a una embarcación
 
 ```http
 POST /api/boats/:id/image
@@ -180,7 +198,7 @@ image: [documento.pdf]
 
 ---
 
-### 5) Solicitar recuperación de contraseña
+### 6) Solicitar recuperación de contraseña
 
 ```http
 POST /api/owners/password/forgot
@@ -196,7 +214,7 @@ Body JSON:
 
 ---
 
-### 6) Resetear contraseña
+### 7) Resetear contraseña
 
 ```http
 POST /api/owners/password/reset
@@ -213,7 +231,7 @@ Body JSON:
 
 ---
 
-### 7) Listar owners (solo admin)
+### 8) Listar owners (solo admin)
 
 ```http
 GET /api/admin/owners
@@ -223,7 +241,7 @@ Requiere JWT válido de un usuario con rol `admin`.
 
 ---
 
-### 8) Crear embarcación como admin
+### 9) Crear embarcación como admin
 
 ```http
 POST /api/admin/boats
@@ -243,7 +261,7 @@ Body JSON:
 
 ---
 
-### 9) Listar embarcaciones pendientes
+### 10) Listar embarcaciones pendientes
 
 ```http
 GET /api/admin/boats/pending
@@ -251,7 +269,7 @@ GET /api/admin/boats/pending
 
 ---
 
-### 10) Verificar embarcación
+### 11) Verificar embarcación
 
 ```http
 PATCH /api/admin/boats/:id/verification

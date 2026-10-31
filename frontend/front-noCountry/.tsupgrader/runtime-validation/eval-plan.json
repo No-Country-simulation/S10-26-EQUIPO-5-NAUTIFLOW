@@ -5,6 +5,26 @@
   "setup": [],
   "assertions": [
     {
+      "name": "backend-build",
+      "kind": "process",
+      "command": "pnpm",
+      "args": ["run", "build"],
+      "cwd": "C:\\Users\\Fede\\Desktop\\No-Country\\backend",
+      "verificationMethod": "exit-code",
+      "expected": "0",
+      "timeoutSeconds": 180
+    },
+    {
+      "name": "backend-tests-pass",
+      "kind": "process",
+      "command": "pnpm",
+      "args": ["test"],
+      "cwd": "C:\\Users\\Fede\\Desktop\\No-Country\\backend",
+      "verificationMethod": "test-results",
+      "expected": "0",
+      "timeoutSeconds": 300
+    },
+    {
       "name": "production-build",
       "kind": "process",
       "command": "npm",
@@ -26,8 +46,8 @@
       "name": "homepage-responds",
       "kind": "http-probe",
       "startCommand": "npm",
-      "startArgs": ["start", "--", "--host", "127.0.0.1", "--port", "4200"],
-      "url": "http://127.0.0.1:4200/",
+      "startArgs": ["start", "--", "--host", "127.0.0.1", "--port", "4300"],
+      "url": "http://127.0.0.1:4300/",
       "verificationMethod": "http-status",
       "expected": "200",
       "timeoutSeconds": 180

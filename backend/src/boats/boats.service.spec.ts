@@ -4,6 +4,7 @@ import { CloudinaryService } from '../cloudinary/cloudinary.service.js';
 import { BoatFeedback } from '../passengers/boat-feedback.entity.js';
 import { BoatDocument } from './boat-document.entity.js';
 import { Boat, BoatStatus, VerificationStatus } from './boat.entity.js';
+import { BoatAvailability } from './dto/search-boats.dto.js';
 import { BoatsService } from './boats.service.js';
 
 describe('BoatsService', () => {
@@ -93,5 +94,53 @@ describe('BoatsService', () => {
       relations: { documents: true },
       order: { createdAt: 'DESC' },
     });
+  });
+
+  it('filters active approved boats by capacity, zone, and availability', async () => {
+    boatsRepository.find.mockResolvedValue([]);
+    getRawMany.mockResolvedValue([]);
+
+    await service.listAvailable({
+      minCapacity: 6,
+      zone: 'Delta',
+      availability: BoatAvailability.AVAILABLE,
+    });
+
+    expect(boatsRepository.find).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          passengerCapacity: expect.objectContaining({
+            _type: 'moreThanOrEqual',
+          }),
+          coverageZone: expect.objectContaining({ _type: 'ilike' }),
+          availablePassengerCapacity: expect.objectContaining({
+            _type: 'moreThan',
+          }),
+          status: BoatStatus.ACTIVE,
+          verificationStatus: VerificationStatus.APPROVED,
+        }),
+        relations: { owner: true },
+      }),
+    );
+  });
+
+  it('can filter boats without available passenger places', async () => {
+    boatsRepository.find.mockResolvedValue([]);
+    getRawMany.mockResolvedValue([]);
+
+    await service.listAvailable({
+      availability: BoatAvailability.UNAVAILABLE,
+    });
+
+    expect(boatsRepository.find).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          availablePassengerCapacity: expect.objectContaining({
+            _type: 'equal',
+            _value: 0,
+          }),
+        }),
+      }),
+    );
   });
 });
