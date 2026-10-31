@@ -10,4 +10,9 @@ export class AuthController {
   login(@Body() dto: AdminLoginDto) {
     return this.authService.loginAdmin(dto.email, dto.password);
   }
+
+  @Post('owner-login')
+  loginOwner(@Body() dto: AdminLoginDto) {
+    return this.authService.loginOwner(dto.email, dto.password);
+  }
 }

@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { AdminAuthGuard } from './admin-auth.guard.js';
+import { JWT_ALGORITHM, JWT_ISSUER } from './jwt.constants.js';
 
 describe('AdminAuthGuard', () => {
   const verifyAsync = vi.fn();
@@ -44,6 +45,25 @@ describe('AdminAuthGuard', () => {
     await expect(
       guard.canActivate(contextFor('Bearer valid-token')),
     ).resolves.toBe(true);
-    expect(verifyAsync).toHaveBeenCalledWith('valid-token');
+    expect(verifyAsync).toHaveBeenCalledWith('valid-token', {
+      algorithms: [JWT_ALGORITHM],
+      issuer: JWT_ISSUER,
+    });
+  });
+
+  it('rejects signed tokens without the required identity claims', async () => {
+    verifyAsync.mockResolvedValue({ role: 'admin' });
+
+    await expect(
+      guard.canActivate(contextFor('Bearer valid-token')),
+    ).rejects.toThrow(UnauthorizedException);
+  });
+
+  it('rejects expired or invalid tokens', async () => {
+    verifyAsync.mockRejectedValue(new Error('jwt expired'));
+
+    await expect(
+      guard.canActivate(contextFor('Bearer expired-token')),
+    ).rejects.toThrow(UnauthorizedException);
   });
 });

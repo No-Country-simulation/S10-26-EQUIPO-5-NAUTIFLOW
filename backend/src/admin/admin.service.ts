@@ -6,6 +6,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Boat, VerificationStatus } from '../boats/boat.entity.js';
+import { BoatDocumentType } from '../boats/boat-document.entity.js';
 import { BoatsService } from '../boats/boats.service.js';
 import { CreateBoatDto } from '../boats/dto/create-boat.dto.js';
 import { Owner } from '../owners/owner.entity.js';
@@ -38,7 +39,7 @@ export class AdminService {
   listPendingBoats() {
     return this.boatsRepository.find({
       where: { verificationStatus: VerificationStatus.PENDING },
-      relations: { owner: true },
+      relations: { owner: true, documents: true },
       order: { createdAt: 'ASC' },
     });
   }
@@ -52,12 +53,36 @@ export class AdminService {
     adminId: string,
     dto: VerifyBoatDto,
   ): Promise<Boat> {
-    const boat = await this.boatsRepository.findOneBy({ id: boatId });
+    const boat = await this.boatsRepository.findOne({
+      where: { id: boatId },
+      relations: { documents: true },
+    });
     if (!boat) {
       throw new NotFoundException('No existe la embarcación indicada');
     }
     if (dto.status === VerificationStatus.REJECTED && !dto.reason?.trim()) {
       throw new BadRequestException('Indica el motivo del rechazo');
+    }
+    if (dto.status === VerificationStatus.APPROVED) {
+      const hasLicense = boat.documents?.some(
+        (document) => document.type === BoatDocumentType.LICENSE,
+      );
+      if (!hasLicense) {
+        throw new BadRequestException(
+          'No se puede aprobar sin revisar la licencia náutica',
+        );
+      }
+      if (dto.documentedPassengerCapacity === undefined) {
+        throw new BadRequestException(
+          'Indica la capacidad de pasajeros que figura en la licencia',
+        );
+      }
+      if (dto.documentedPassengerCapacity !== boat.passengerCapacity) {
+        throw new BadRequestException(
+          'La capacidad declarada no coincide con la licencia; no se puede aprobar',
+        );
+      }
+      boat.documentedPassengerCapacity = dto.documentedPassengerCapacity;
     }
 
     boat.verificationStatus = dto.status;

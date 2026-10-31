@@ -4,6 +4,11 @@ import { JwtService } from '@nestjs/jwt';
 import { scrypt, timingSafeEqual } from 'node:crypto';
 import { Repository } from 'typeorm';
 import { Owner } from '../owners/owner.entity.js';
+import {
+  JWT_ALGORITHM,
+  JWT_EXPIRES_IN_SECONDS,
+  JWT_ISSUER,
+} from './jwt.constants.js';
 
 interface AdminTokenPayload {
   sub: string;
@@ -31,37 +36,61 @@ export class AuthService {
   ) {}
 
   async loginAdmin(emailAddress: string, password: string) {
+    return this.loginWithRole(emailAddress, password, 'admin');
+  }
+
+  async loginOwner(emailAddress: string, password: string) {
+    return this.loginWithRole(emailAddress, password, 'owner');
+  }
+
+  private async loginWithRole(
+    emailAddress: string,
+    password: string,
+    role: 'admin' | 'owner',
+  ) {
     const email = emailAddress.trim().toLowerCase();
-    const admin = await this.ownersRepository
+    const account = await this.ownersRepository
       .createQueryBuilder('owner')
       .addSelect('owner.passwordHash')
       .where('owner.email = :email', { email })
       .getOne();
 
     if (
-      !admin ||
-      admin.role !== 'admin' ||
-      !admin.passwordHash ||
-      !(await this.passwordMatches(password, admin.passwordHash))
+      !account ||
+      account.role !== role ||
+      !account.passwordHash ||
+      !(await this.passwordMatches(password, account.passwordHash))
     ) {
       throw new UnauthorizedException('Email o contraseña incorrectos');
     }
 
-    const payload: AdminTokenPayload = { sub: admin.id, role: admin.role };
+    const payload: AdminTokenPayload = { sub: account.id, role: account.role };
     const accessToken = await this.jwtService.signAsync(payload, {
-      expiresIn: '1h',
+      algorithm: JWT_ALGORITHM,
+      expiresIn: JWT_EXPIRES_IN_SECONDS,
+      issuer: JWT_ISSUER,
     });
 
-    return {
-      accessToken,
-      tokenType: 'Bearer',
-      expiresIn: 3600,
-      admin: {
-        id: admin.id,
-        fullName: admin.fullName,
-        email: admin.email,
-      },
+    const user = {
+      id: account.id,
+      fullName: account.fullName,
+      email: account.email,
+      role: account.role,
     };
+
+    return role === 'admin'
+      ? {
+          accessToken,
+          tokenType: 'Bearer',
+          expiresIn: JWT_EXPIRES_IN_SECONDS,
+          admin: user,
+        }
+      : {
+          accessToken,
+          tokenType: 'Bearer',
+          expiresIn: JWT_EXPIRES_IN_SECONDS,
+          user,
+        };
   }
 
   private async passwordMatches(

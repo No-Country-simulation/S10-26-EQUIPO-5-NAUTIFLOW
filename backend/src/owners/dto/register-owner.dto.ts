@@ -1,6 +1,7 @@
 import {
   IsEmail,
   IsNotEmpty,
+  Matches,
   IsString,
   MaxLength,
   MinLength,
@@ -14,6 +15,9 @@ export class RegisterOwnerDto {
   fullName!: string;
 
   @IsEmail()
+  @Matches(/^[A-Z0-9._%+-]+@(gmail\.com|hotmail\.com|outlook\.com)$/i, {
+    message: 'El correo debe pertenecer a Gmail, Hotmail u Outlook (.com)',
+  })
   @MaxLength(320)
   email!: string;
 
