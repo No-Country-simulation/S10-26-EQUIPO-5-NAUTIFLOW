@@ -55,6 +55,8 @@
         <label class="passenger-search"><span class="visually-hidden">Buscar por destino o embarcación</span><input class="form-control" type="search" [(ngModel)]="passengerSearch" (ngModelChange)="filterAvailableBoats()" placeholder="Destino o embarcación" /></label>
       </div>
       <p *ngIf="isLoadingAvailableBoats" class="catalog-empty" role="status">Cargando embarcaciones...</p>
+      <div *ngIf="bookingError" class="alert alert-danger" role="alert">{{ bookingError }}</div>
+      <div *ngIf="bookingSuccess" class="alert alert-success" role="status">{{ bookingSuccess }}</div>
       <div *ngIf="catalogError" class="alert alert-danger" role="alert">
         {{ catalogError }}
         <button class="btn btn-sm btn-outline-danger ms-2" type="button" (click)="retryAvailableBoats()">Reintentar</button>
@@ -64,9 +66,20 @@
           <div class="col-12 col-md-6 col-xl-4" *ngFor="let boat of filteredAvailableBoats; trackBy: trackById">
             <article class="boat-result h-100">
               <img *ngIf="boat.imageUrl" [src]="boat.imageUrl" [alt]="'Embarcación ' + boat.name" loading="lazy" decoding="async" />
+                <div *ngIf="!boat.imageUrl" class="ratio ratio-16x9 d-flex align-items-center justify-content-center bg-light text-secondary">Imagen no disponible</div>
               <div class="boat-result-body">
-                <div class="d-flex justify-content-between gap-3"><h3>{{ boat.name }}</h3><span class="boat-capacity">{{ boat.passengerCapacity }} pasajeros</span></div>
+                <div class="d-flex justify-content-between gap-3"><h3>{{ boat.name }}</h3><span class="boat-capacity">{{ boat.availablePassengerCapacity }} plazas libres</span></div>
                 <p class="mb-0">{{ boat.coverageZone }}</p>
+                <p class="mb-0">Lanchero: {{ boat.owner?.fullName || 'No disponible' }}</p>
+                <p class="text-warning small mb-0" *ngIf="boat.feedbackCount; else noBoatFeedback">★ {{ boat.averageRating | number:'1.1-1' }} · {{ boat.feedbackCount }} opiniones</p>
+                <ng-template #noBoatFeedback><p class="text-secondary small mb-0">Sin opiniones todavía</p></ng-template>
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3">
+                  <button *ngIf="userRole === 'passenger'; else signInToBook" class="btn btn-primary btn-sm" type="button" (click)="registerForBoat(boat)" [disabled]="hasBookingForBoat(boat.id) || boat.availablePassengerCapacity < 1 || reservingBoatId === boat.id">
+                    {{ reservingBoatId === boat.id ? 'Registrando...' : hasBookingForBoat(boat.id) ? 'Plaza reservada' : boat.availablePassengerCapacity < 1 ? 'Sin plazas' : 'Reservar 1 plaza' }}
+                  </button>
+                  <ng-template #signInToBook><button class="btn btn-outline-primary btn-sm" type="button" (click)="openPassengerLogin()">Inicia sesión para reservar</button></ng-template>
+                  <span class="text-secondary small">{{ boat.passengerCapacity }} plazas totales</span>
+                </div>
               </div>
             </article>
           </div>
@@ -79,7 +92,7 @@
   <section *ngIf="currentUser" id="mi-cuenta" class="account-section py-5">
     <div class="container">
       <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end gap-2 mb-4">
-        <div><span class="eyebrow text-primary">{{ userRole === 'admin' ? 'ADMINISTRACIÓN' : 'MI CUENTA' }}</span><h2 class="h3 mb-1">Hola, {{ currentUser.fullName }}</h2><p class="text-secondary mb-0">{{ userRole === 'admin' ? 'Revisión de lancheros y embarcaciones' : 'Historial de tus embarcaciones' }}</p></div>
+        <div><span class="eyebrow text-primary">{{ userRole === 'admin' ? 'ADMINISTRACIÓN' : userRole === 'passenger' ? 'CUENTA DE PASAJERO' : 'MI CUENTA' }}</span><h2 class="h3 mb-1">Hola, {{ currentUser.fullName }}</h2><p class="text-secondary mb-0">{{ userRole === 'admin' ? 'Revisión de lancheros y embarcaciones' : userRole === 'passenger' ? 'Explora embarcaciones verificadas para tu próxima salida.' : 'Historial de tus embarcaciones' }}</p></div>
       </div>
       <div *ngIf="accountError" class="alert alert-danger">{{ accountError }}</div>
       <ng-container *ngIf="userRole === 'owner'">
@@ -90,6 +103,35 @@
         </div>
         <ng-template #noOwnerBoats><p class="catalog-empty">Aún no registraste embarcaciones.</p></ng-template>
       </ng-container>
+      <div *ngIf="userRole === 'passenger'" class="mb-4 p-3 border-start border-3 bg-white">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end gap-2 mb-3">
+          <div><h3 class="h5 mb-1">Mis reservas</h3><p class="text-secondary mb-0">Tus plazas y opiniones a los lancheros.</p></div>
+          <a class="link-success fw-bold text-decoration-none" href="#embarcaciones">Ver embarcaciones disponibles <span aria-hidden="true">→</span></a>
+        </div>
+        <div *ngIf="bookingError" class="alert alert-danger w-100" role="alert">{{ bookingError }}</div>
+        <div *ngIf="bookingSuccess" class="alert alert-success w-100" role="status">{{ bookingSuccess }}</div>
+        <div *ngIf="passengerBookings.length; else noPassengerBookings" class="row g-3 w-100">
+          <div class="col-12 col-lg-6" *ngFor="let booking of passengerBookings; trackBy: trackById">
+            <article class="card h-100 overflow-hidden">
+              <img *ngIf="booking.boat.imageUrl" class="card-img-top" [src]="booking.boat.imageUrl" [alt]="'Embarcación ' + booking.boat.name" loading="lazy" decoding="async" />
+              <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start gap-3"><div><h4 class="h6">{{ booking.boat.name }}</h4><p class="text-secondary">{{ booking.boat.coverageZone }} · Lanchero: {{ booking.boat.owner?.fullName }}</p></div><span class="text-success small fw-bold">Plaza confirmada</span></div>
+                <div *ngIf="booking.feedback as feedback" class="mt-3 p-3 border-start border-3 bg-light"><strong>Tu opinión · {{ feedback.rating }}/5</strong><p *ngIf="feedback.comment" class="mt-2">{{ feedback.comment }}</p></div>
+                <form *ngIf="!booking.feedback" (ngSubmit)="submitFeedback(booking.id)" class="mt-3 pt-3 border-top">
+                  <label class="form-label" [for]="'rating-' + booking.id">Valora al lanchero</label>
+                  <select class="form-select mb-2" [id]="'rating-' + booking.id" [(ngModel)]="feedbackDrafts[booking.id].rating" [ngModelOptions]="{standalone: true}">
+                    <option [ngValue]="5">5 · Excelente</option><option [ngValue]="4">4 · Muy bueno</option><option [ngValue]="3">3 · Bueno</option><option [ngValue]="2">2 · Regular</option><option [ngValue]="1">1 · Malo</option>
+                  </select>
+                  <label class="form-label" [for]="'comment-' + booking.id">Comentario <span class="text-secondary">(opcional)</span></label>
+                  <textarea class="form-control" rows="2" maxlength="1000" [id]="'comment-' + booking.id" [(ngModel)]="feedbackDrafts[booking.id].comment" [ngModelOptions]="{standalone: true}" placeholder="Comparte tu experiencia"></textarea>
+                  <button class="btn btn-outline-primary btn-sm mt-3" type="submit" [disabled]="submittingFeedbackId === booking.id">{{ submittingFeedbackId === booking.id ? 'Enviando...' : 'Enviar opinión' }}</button>
+                </form>
+              </div>
+            </article>
+          </div>
+        </div>
+        <ng-template #noPassengerBookings><p class="catalog-empty w-100">Todavía no tienes reservas. Elige una embarcación del catálogo para registrar tu plaza.</p></ng-template>
+      </div>
       <ng-container *ngIf="userRole === 'admin'">
         <h3 class="h5 mt-4">Embarcaciones pendientes <span class="text-secondary">({{ pendingBoats.length }})</span></h3>
         <div *ngIf="pendingBoats.length; else noPendingBoats" class="table-responsive"><table class="table align-middle"><thead><tr><th>Embarcación</th><th>Lanchero</th><th>Zona</th><th>Capacidad (declarada/licencia)</th><th>Documentos</th><th>Acciones</th></tr></thead><tbody><tr *ngFor="let boat of pendingBoats; trackBy: trackById"><td>{{ boat.name }}<small class="d-block text-secondary">{{ boat.registrationNumber }}</small></td><td>{{ boat.owner?.fullName || 'Sin nombre' }}</td><td>{{ boat.coverageZone }}</td><td><span class="d-block">Declarada: {{ boat.passengerCapacity }}</span><label class="form-label small mt-2" [for]="'documented-capacity-' + boat.id">Según licencia</label><input class="form-control form-control-sm" type="number" min="1" max="200" [id]="'documented-capacity-' + boat.id" [ngModel]="documentedCapacities[boat.id] ?? ''" (ngModelChange)="setDocumentedCapacity(boat.id, $event)" /></td><td><a *ngFor="let document of boat.documents" class="d-block" [href]="document.fileUrl" target="_blank" rel="noopener noreferrer">{{ document.type }}<small class="d-block">{{ document.originalName }}</small></a><span *ngIf="!boat.documents?.length" class="text-danger">Sin documentos</span></td><td class="d-flex gap-2"><button class="btn btn-sm btn-success" type="button" (click)="verifyBoat(boat.id, 'approved')">Aprobar</button><button class="btn btn-sm btn-outline-danger" type="button" (click)="verifyBoat(boat.id, 'rejected')">Rechazar</button></td></tr></tbody></table></div>
@@ -134,9 +176,25 @@
 
 <div *ngIf="activeModal" class="modal fade show d-block" tabindex="-1" role="dialog" aria-modal="true">
   <div class="modal-dialog modal-dialog-centered" [class.modal-lg]="activeModal === 'register'"><div class="modal-content border-0 shadow-lg">
-    <div class="modal-header"><h2 class="modal-title h5">{{ activeModal === 'login' ? 'Iniciar sesión' : activeModal === 'register' ? 'Registro de lanchero' : 'Recuperar contraseña' }}</h2><button type="button" class="btn-close" aria-label="Cerrar" (click)="closeModal()"></button></div>
+    <div class="modal-header"><h2 class="modal-title h5">{{ activeModal === 'login' ? 'Iniciar sesión' : activeModal === 'register' ? (registrationRole === 'passenger' ? 'Registro de pasajero' : 'Registro de lanchero') : 'Recuperar contraseña' }}</h2><button type="button" class="btn-close" aria-label="Cerrar" (click)="closeModal()"></button></div>
     <div class="modal-body">
       <div *ngIf="activeModal === 'register'">
+        <div class="btn-group w-100 mb-4" role="group" aria-label="Tipo de registro">
+          <button class="btn" [class.btn-primary]="registrationRole === 'passenger'" [class.btn-outline-secondary]="registrationRole !== 'passenger'" type="button" (click)="selectRegistrationRole('passenger')">Pasajero</button>
+          <button class="btn" [class.btn-primary]="registrationRole === 'owner'" [class.btn-outline-secondary]="registrationRole !== 'owner'" type="button" (click)="selectRegistrationRole('owner')">Lanchero</button>
+        </div>
+        <div *ngIf="registrationRole === 'passenger'">
+          <div *ngIf="errorMessage" class="alert alert-danger" role="alert">{{ errorMessage }}</div>
+          <form [formGroup]="passengerForm" (ngSubmit)="registerPassenger()" novalidate>
+            <h3 class="h4 mb-4">Crea tu cuenta de pasajero</h3>
+            <div class="mb-3"><label for="passengerFullName" class="form-label">Nombre</label><input id="passengerFullName" class="form-control" autocomplete="name" formControlName="fullName" placeholder="Tu nombre" [class.is-invalid]="passengerForm.controls.fullName.touched && passengerForm.controls.fullName.invalid" /><div class="invalid-feedback">Ingresa tu nombre.</div></div>
+            <div class="mb-3"><label for="passengerEmail" class="form-label">Correo electrónico</label><input id="passengerEmail" type="email" autocomplete="email" class="form-control" formControlName="email" placeholder="nombre@correo.com" [class.is-invalid]="passengerForm.controls.email.touched && passengerForm.controls.email.invalid" /><div class="invalid-feedback">Ingresa un correo válido.</div></div>
+            <label for="passengerPassword" class="form-label">Contraseña</label><div class="input-group"><input id="passengerPassword" [type]="showPassengerPassword ? 'text' : 'password'" autocomplete="new-password" class="form-control" formControlName="password" placeholder="Mínimo 12 caracteres" [class.is-invalid]="passengerForm.controls.password.touched && passengerForm.controls.password.invalid" /><button class="btn btn-outline-secondary" type="button" (click)="togglePassengerPasswordVisibility()" [attr.aria-label]="showPassengerPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'">{{ showPassengerPassword ? 'Ocultar' : 'Mostrar' }}</button></div>
+            <div class="invalid-feedback d-block" *ngIf="passengerForm.controls.password.touched && passengerForm.controls.password.invalid">La contraseña debe tener entre 12 y 128 caracteres.</div>
+            <button class="btn btn-primary w-100 mt-4" type="submit" [disabled]="isSubmitting">{{ isSubmitting ? 'Creando cuenta...' : 'Crear cuenta de pasajero' }}</button>
+          </form>
+        </div>
+        <div *ngIf="registrationRole === 'owner'">
         <div class="d-flex align-items-center mb-4">
           <div class="step" [class.active]="currentStep >= 1">1</div><div class="step-line" [class.active]="currentStep >= 2"></div><div class="step" [class.active]="currentStep >= 2">2</div>
           <span class="ms-3 text-secondary small">{{ currentStep === 1 ? 'Datos del lanchero' : 'Datos de la lancha' }}</span>
@@ -171,13 +229,14 @@
           <div class="d-flex flex-column flex-sm-row gap-2 mt-4"><button class="btn btn-outline-secondary flex-fill" type="button" (click)="currentStep = 1" [disabled]="isSubmitting">Volver</button><button class="btn btn-primary flex-fill" type="submit" [disabled]="isSubmitting">{{ isSubmitting ? 'Cargando datos...' : 'Registrar lancha' }}</button></div>
           <button *ngIf="registeredBoat" class="btn btn-outline-primary w-100 mt-3" type="button" (click)="openDocumentsModal()">Cargar licencia, seguro y antecedentes</button>
         </form>
+        </div>
       </div>
       <div *ngIf="activeModal === 'login'">
-        <p class="text-secondary small">Accede para gestionar tus reservas y embarcaciones.</p>
-        <div class="btn-group w-100 mb-3" role="group" aria-label="Tipo de cuenta"><button class="btn" [class.btn-primary]="loginRole === 'owner'" [class.btn-outline-secondary]="loginRole !== 'owner'" type="button" (click)="selectLoginRole('owner')">Lanchero</button><button class="btn" [class.btn-primary]="loginRole === 'admin'" [class.btn-outline-secondary]="loginRole !== 'admin'" type="button" (click)="selectLoginRole('admin')">Administrador</button></div>
+        <p class="text-secondary small">{{ loginRole === 'passenger' ? 'Inicia sesión para explorar embarcaciones verificadas.' : 'Accede para gestionar tus reservas y embarcaciones.' }}</p>
+        <div class="btn-group w-100 mb-3" role="group" aria-label="Tipo de cuenta"><button class="btn" [class.btn-primary]="loginRole === 'passenger'" [class.btn-outline-secondary]="loginRole !== 'passenger'" type="button" (click)="selectLoginRole('passenger')">Pasajero</button><button class="btn" [class.btn-primary]="loginRole === 'owner'" [class.btn-outline-secondary]="loginRole !== 'owner'" type="button" (click)="selectLoginRole('owner')">Lanchero</button><button class="btn" [class.btn-primary]="loginRole === 'admin'" [class.btn-outline-secondary]="loginRole !== 'admin'" type="button" (click)="selectLoginRole('admin')">Administrador</button></div>
         <div *ngIf="loginError" class="alert alert-danger">{{ loginError }}</div><div *ngIf="loginSuccess" class="alert alert-success">{{ loginSuccess }}</div>
         <form [formGroup]="loginForm" (ngSubmit)="login()" novalidate><label for="loginEmail" class="form-label">Correo electrónico</label><input id="loginEmail" type="email" autocomplete="username" class="form-control mb-3" formControlName="email" [class.is-invalid]="loginForm.controls.email.touched && loginForm.controls.email.invalid" /><div class="invalid-feedback mb-2">Ingresa un correo válido.</div><label for="loginPassword" class="form-label">Contraseña</label><div class="input-group"><input id="loginPassword" [type]="showLoginPassword ? 'text' : 'password'" autocomplete="current-password" class="form-control" formControlName="password" [class.is-invalid]="loginForm.controls.password.touched && loginForm.controls.password.invalid" /><button class="btn btn-outline-secondary" type="button" (click)="toggleLoginPasswordVisibility()" [attr.aria-label]="showLoginPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'">{{ showLoginPassword ? 'Ocultar' : 'Mostrar' }}</button></div><div class="invalid-feedback d-block" *ngIf="loginForm.controls.password.touched && loginForm.controls.password.invalid">La contraseña es obligatoria y debe tener al menos 12 caracteres.</div><button class="btn btn-primary w-100 mt-4" type="submit" [disabled]="isLoginSubmitting">{{ isLoginSubmitting ? 'Ingresando...' : 'Iniciar sesión' }}</button></form>
-        <button class="btn btn-link px-0 mt-3" type="button" (click)="openForgot()">¿Olvidaste tu contraseña?</button>
+        <button *ngIf="loginRole === 'owner'" class="btn btn-link px-0 mt-3" type="button" (click)="openForgot()">¿Olvidaste tu contraseña?</button>
       </div>
       <div *ngIf="activeModal === 'forgot'">
         <p class="text-secondary small">Te enviaremos un enlace para restablecer tu contraseña.</p><div *ngIf="forgotError" class="alert alert-danger">{{ forgotError }}</div><div *ngIf="forgotSuccess" class="alert alert-success">{{ forgotSuccess }}</div>

@@ -28,6 +28,8 @@ services:
     volumes:
       - ./backend/migrations/005_add_boat_documents.sql:/migrations/005_add_boat_documents.sql:ro
       - ./backend/migrations/006_add_documented_passenger_capacity.sql:/migrations/006_add_documented_passenger_capacity.sql:ro
+      - ./backend/migrations/007_add_passenger_accounts.sql:/migrations/007_add_passenger_accounts.sql:ro
+      - ./backend/migrations/008_add_boat_bookings_and_feedback.sql:/migrations/008_add_boat_bookings_and_feedback.sql:ro
     entrypoint: ["psql"]
     command:
       [
@@ -43,6 +45,10 @@ services:
         "/migrations/005_add_boat_documents.sql",
         "-f",
         "/migrations/006_add_documented_passenger_capacity.sql",
+        "-f",
+        "/migrations/007_add_passenger_accounts.sql",
+        "-f",
+        "/migrations/008_add_boat_bookings_and_feedback.sql",
       ]
     restart: "no"
 

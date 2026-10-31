@@ -15,6 +15,7 @@ import {
   BoatDocumentStatus,
   BoatDocumentType,
 } from './boat-document.entity.js';
+import { BoatFeedback } from '../passengers/boat-feedback.entity.js';
 
 @Injectable()
 export class BoatsService {
@@ -25,6 +26,8 @@ export class BoatsService {
     private readonly ownersRepository: Repository<Owner>,
     @InjectRepository(BoatDocument)
     private readonly documentsRepository: Repository<BoatDocument>,
+    @InjectRepository(BoatFeedback)
+    private readonly feedbackRepository: Repository<BoatFeedback>,
     private readonly cloudinaryService: CloudinaryService,
   ) {}
 
@@ -49,6 +52,7 @@ export class BoatsService {
       registrationNumber,
       name: dto.name.trim(),
       passengerCapacity: dto.passengerCapacity,
+      availablePassengerCapacity: dto.passengerCapacity,
       coverageZone: dto.coverageZone.trim(),
     });
 
@@ -62,13 +66,42 @@ export class BoatsService {
     });
   }
 
-  listAvailable(): Promise<Boat[]> {
-    return this.boatsRepository.find({
-      where: {
-        status: BoatStatus.ACTIVE,
-        verificationStatus: VerificationStatus.APPROVED,
-      },
-      order: { createdAt: 'DESC' },
+  async listAvailable(): Promise<
+    Array<Omit<Boat, 'owner'> & { owner: Pick<Owner, 'fullName'> }>
+  > {
+    const [boats, feedbackSummaries] = await Promise.all([
+      this.boatsRepository.find({
+        where: {
+          status: BoatStatus.ACTIVE,
+          verificationStatus: VerificationStatus.APPROVED,
+        },
+        relations: { owner: true },
+        order: { createdAt: 'DESC' },
+      }),
+      this.feedbackRepository
+        .createQueryBuilder('feedback')
+        .select('feedback.ownerId', 'ownerId')
+        .addSelect('AVG(feedback.rating)', 'averageRating')
+        .addSelect('COUNT(feedback.id)', 'feedbackCount')
+        .groupBy('feedback.ownerId')
+        .getRawMany<{
+          ownerId: string;
+          averageRating: string;
+          feedbackCount: string;
+        }>(),
+    ]);
+    const summariesByBoat = new Map(
+      feedbackSummaries.map((summary) => [summary.ownerId, summary]),
+    );
+
+    return boats.map(({ owner, ...boat }) => {
+      const summary = summariesByBoat.get(owner.id);
+      return {
+        ...boat,
+        owner: { fullName: owner.fullName },
+        averageRating: summary ? Number(summary.averageRating) : null,
+        feedbackCount: summary ? Number(summary.feedbackCount) : 0,
+      };
     });
   }
 

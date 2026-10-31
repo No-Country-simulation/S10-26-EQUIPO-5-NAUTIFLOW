@@ -43,10 +43,14 @@ export class AuthService {
     return this.loginWithRole(emailAddress, password, 'owner');
   }
 
+  async loginPassenger(emailAddress: string, password: string) {
+    return this.loginWithRole(emailAddress, password, 'passenger');
+  }
+
   private async loginWithRole(
     emailAddress: string,
     password: string,
-    role: 'admin' | 'owner',
+    role: 'admin' | 'owner' | 'passenger',
   ) {
     const email = emailAddress.trim().toLowerCase();
     const account = await this.ownersRepository

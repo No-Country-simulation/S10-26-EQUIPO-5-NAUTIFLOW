@@ -62,6 +62,9 @@ describe('OwnersService password recovery', () => {
 
     await service.requestPasswordReset(' OWNER@example.com ');
 
+    expect(ownersRepository.findOne).toHaveBeenCalledWith({
+      where: { email: 'owner@example.com', role: 'owner' },
+    });
     const persistedToken = resetTokensRepository.create.mock.calls[0][0];
     const emailedToken = resetMailer.sendResetLink.mock.calls[0][1];
     expect(persistedToken.tokenHash).not.toBe(emailedToken);

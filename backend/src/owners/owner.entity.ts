@@ -30,8 +30,8 @@ export class Owner {
   @Column({ length: 30, default: 'owner' })
   role!: string;
 
-  @Column({ length: 30 })
-  phone!: string;
+  @Column({ type: 'varchar', length: 30, nullable: true })
+  phone!: string | null;
 
   @OneToMany('Boat', (boat: Boat) => boat.owner)
   boats!: Boat[];

@@ -10,6 +10,8 @@ import {
 } from 'typeorm';
 import type { Owner } from '../owners/owner.entity.js';
 import type { BoatDocument } from './boat-document.entity.js';
+import type { BoatBooking } from '../passengers/boat-booking.entity.js';
+import type { BoatFeedback } from '../passengers/boat-feedback.entity.js';
 
 export enum BoatStatus {
   ACTIVE = 'active',
@@ -36,6 +38,9 @@ export class Boat {
 
   @Column({ name: 'passenger_capacity', type: 'integer' })
   passengerCapacity!: number;
+
+  @Column({ name: 'available_passenger_capacity', type: 'integer' })
+  availablePassengerCapacity!: number;
 
   @Column({
     name: 'documented_passenger_capacity',
@@ -94,6 +99,12 @@ export class Boat {
 
   @OneToMany('BoatDocument', (document: BoatDocument) => document.boat)
   documents!: BoatDocument[];
+
+  @OneToMany('BoatBooking', (booking: BoatBooking) => booking.boat)
+  bookings!: BoatBooking[];
+
+  @OneToMany('BoatFeedback', (feedback: BoatFeedback) => feedback.boat)
+  feedback!: BoatFeedback[];
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
