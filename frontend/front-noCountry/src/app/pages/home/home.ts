@@ -11,7 +11,7 @@ import {
 } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { BoatsService } from '../../core/services/boat.service';
-import type { Boat } from '../../core/services/boat.service';
+import type { Boat, BoatDocument } from '../../core/services/boat.service';
 
 interface OwnerResponse {
   id: string;
@@ -23,6 +23,7 @@ interface BoatResponse {
   id: string;
   name: string;
   registrationNumber: string;
+  documents?: BoatDocument[];
 }
 
 interface AccountResponse {
@@ -60,12 +61,6 @@ interface PassengerBooking {
 
 interface AdminBoat extends Boat {
   owner?: { fullName: string; email: string };
-  documents?: {
-    id: string;
-    type: DocumentType;
-    fileUrl: string;
-    originalName: string;
-  }[];
 }
 
 type DocumentType = 'license' | 'insurance' | 'criminalRecord';
@@ -129,6 +124,8 @@ export class Home {
   catalogError = '';
   pendingBoats: AdminBoat[] = [];
   documentedCapacities: Record<string, number | null> = {};
+  verifyingBoatId: string | null = null;
+  accountSuccess = '';
   adminOwners: { id: string; fullName: string; email: string }[] = [];
   accountError = '';
   passengerSearch = '';
@@ -272,6 +269,7 @@ export class Home {
   }
 
   registerOwner(): void {
+    if (this.isSubmitting) return;
     this.errorMessage = '';
     this.successMessage = '';
     if (this.ownerForm.invalid) {
@@ -293,6 +291,7 @@ export class Home {
   }
 
   registerPassenger(): void {
+    if (this.isSubmitting) return;
     this.errorMessage = '';
     if (this.passengerForm.invalid) {
       this.passengerForm.markAllAsTouched();
@@ -345,6 +344,11 @@ export class Home {
   }
 
   registerBoat(): void {
+    if (this.isSubmitting) return;
+    if (this.registeredBoat && this.registeredOwner) {
+      this.currentStep = 3;
+      return;
+    }
     this.errorMessage = '';
     this.successMessage = '';
     this.imageError = '';
@@ -365,21 +369,18 @@ export class Home {
       next: (boat) => {
         this.registeredBoat = boat;
         if (!this.selectedImage) {
-          this.isSubmitting = false;
-          this.successMessage = `La lancha ${boat.name} fue registrada exitosamente. Ya puedes cargar su documentación.`;
+          this.continueToDocuments(boat);
           return;
         }
 
         this.boatsService.uploadImage(boat.id, this.selectedImage).subscribe({
           next: (updatedBoat) => {
             this.registeredBoat = updatedBoat;
-            this.isSubmitting = false;
-            this.successMessage = `La lancha ${boat.name} y su imagen fueron cargadas exitosamente. Ya puedes cargar su documentación.`;
+            this.continueToDocuments(boat, true);
           },
           error: (error: HttpErrorResponse) => {
-            this.isSubmitting = false;
             this.imageError = `La lancha fue registrada, pero no se pudo cargar la imagen: ${this.messageFromError(error)}`;
-            this.successMessage = `La lancha ${boat.name} fue registrada exitosamente.`;
+            this.continueToDocuments(boat);
           },
         });
       },
@@ -567,8 +568,12 @@ export class Home {
   }
 
   verifyBoat(boatId: string, status: 'approved' | 'rejected'): void {
+    if (this.verifyingBoatId) return;
     const token = this.getAccessToken();
-    if (!token) return;
+    if (!token) {
+      this.accountError = 'Inicia sesión como administrador para revisar embarcaciones.';
+      return;
+    }
     const documentedPassengerCapacity = this.documentedCapacities[boatId];
     if (
       status === 'approved' &&
@@ -580,16 +585,51 @@ export class Home {
       return;
     }
     this.accountError = '';
+    this.accountSuccess = '';
+    this.verifyingBoatId = boatId;
     this.http.patch<AdminBoat>(`${this.apiUrl}/admin/boats/${boatId}/verification`, {
       status,
       reason: status === 'rejected' ? 'Documentación incompleta o inválida.' : undefined,
       documentedPassengerCapacity: documentedPassengerCapacity ?? undefined,
     }, { headers: { Authorization: `Bearer ${token}` } }).subscribe({
-      next: () => this.loadAdminData(),
+      next: () => {
+        this.pendingBoats = this.pendingBoats.filter((boat) => boat.id !== boatId);
+        this.accountSuccess =
+          status === 'approved'
+            ? 'Embarcación aprobada y publicada en el catálogo.'
+            : 'Revisión de la embarcación rechazada.';
+        this.verifyingBoatId = null;
+        this.loadAdminData();
+        if (status === 'approved') this.loadAvailableBoats();
+      },
       error: (error: HttpErrorResponse) => {
+        this.verifyingBoatId = null;
         this.accountError = this.messageFromError(error);
       },
     });
+  }
+
+  hasLicenseDocument(boat: AdminBoat): boolean {
+    return Boolean(
+      boat.documents?.some((document) => document.type === 'license'),
+    );
+  }
+
+  canApproveBoat(boat: AdminBoat): boolean {
+    return (
+      this.hasLicenseDocument(boat) &&
+      this.documentedCapacities[boat.id] !== null &&
+      this.documentedCapacities[boat.id] !== undefined
+    );
+  }
+
+  capacityDiffersFromLicense(boat: AdminBoat): boolean {
+    const documentedCapacity = this.documentedCapacities[boat.id];
+    return (
+      documentedCapacity !== null &&
+      documentedCapacity !== undefined &&
+      documentedCapacity !== boat.passengerCapacity
+    );
   }
 
   setDocumentedCapacity(boatId: string, value: string | number): void {
@@ -746,6 +786,7 @@ export class Home {
   }
 
   uploadDocuments(): void {
+    if (this.isUploadingDocuments) return;
     this.documentsError = '';
     this.documentsSuccess = '';
     if (!this.registeredBoat) {
@@ -761,12 +802,19 @@ export class Home {
     this.documentTypes.forEach(({ key }) => formData.append(key, this.selectedDocuments[key]!));
     this.isUploadingDocuments = true;
     this.boatsService.uploadDocuments(this.registeredBoat.id, formData).subscribe({
-      next: () => {
+      next: (documents) => {
         this.isUploadingDocuments = false;
         this.documentsSuccess = 'Archivos cargados exitosamente. Quedaron pendientes de revisión.';
-        this.successMessage = 'La lancha y su documentación fueron registradas exitosamente.';
+        this.refreshOwnerBoatDocuments(documents);
+        if (
+          this.activeModal === 'register' &&
+          this.registrationRole === 'owner' &&
+          this.currentStep === 3
+        ) {
+          this.currentStep = 4;
+        }
         this.selectedDocuments = {};
-        if (this.isBrowser) {
+        if (this.isBrowser && this.showDocumentsModal) {
           this.documentTypes.forEach(({ key }) => {
             const input = document.getElementById(`document-${key}`) as HTMLInputElement | null;
             if (input) input.value = '';
@@ -782,6 +830,42 @@ export class Home {
 
   formatFileSize(file: File | undefined): string {
     return file ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : '';
+  }
+
+  documentLabel(type: BoatDocument['type']): string {
+    return this.documentTypes.find((document) => document.key === type)?.label ?? type;
+  }
+
+  finishOwnerRegistration(): void {
+    this.activeModal = null;
+    this.currentStep = 1;
+    this.registeredOwner = undefined;
+    this.registeredBoat = undefined;
+    this.ownerForm.reset();
+    this.boatForm.reset();
+    this.selectedImage = undefined;
+    this.selectedDocuments = {};
+    this.errorMessage = '';
+    this.successMessage = '';
+    this.documentsSuccess = '';
+    this.imageError = '';
+  }
+
+  private continueToDocuments(boat: BoatResponse, imageUploaded = false): void {
+    this.isSubmitting = false;
+    this.currentStep = 3;
+    this.successMessage = imageUploaded
+      ? `La lancha ${boat.name} y su imagen fueron cargadas. Ahora carga la documentación requerida.`
+      : `La lancha ${boat.name} fue registrada. Ahora carga la documentación requerida.`;
+  }
+
+  private refreshOwnerBoatDocuments(documents: BoatDocument[]): void {
+    if (!this.registeredBoat) return;
+
+    this.registeredBoat = { ...this.registeredBoat, documents };
+    this.myBoats = this.myBoats.map((boat) =>
+      boat.id === this.registeredBoat?.id ? { ...boat, documents } : boat,
+    );
   }
 
   private handleError(error: HttpErrorResponse, form: FormGroup): void {

@@ -27,8 +27,9 @@ describe('AdminService boat verification', () => {
     const boat = {
       id: 'boat-id',
       passengerCapacity: 8,
+      availablePassengerCapacity: 8,
       documents: [{ type: 'license' }],
-      verificationStatus: 'pending',
+      verificationStatus: VerificationStatus.PENDING,
       verificationReason: null,
       verifiedBy: null,
       verifiedAt: null,
@@ -50,6 +51,7 @@ describe('AdminService boat verification', () => {
   it('requires a reason when rejecting a boat', async () => {
     findOne.mockResolvedValue({
       id: 'boat-id',
+      verificationStatus: VerificationStatus.PENDING,
     } as Boat);
 
     await expect(
@@ -70,20 +72,26 @@ describe('AdminService boat verification', () => {
     ).rejects.toThrow(NotFoundException);
   });
 
-  it('blocks approval when the capacity on the license differs', async () => {
-    findOne.mockResolvedValue({
+  it('uses the license capacity when approving a boat', async () => {
+    const boat = {
       id: 'boat-id',
       passengerCapacity: 8,
+      availablePassengerCapacity: 8,
       documents: [{ type: 'license' }],
-    } as unknown as Boat);
+      verificationStatus: VerificationStatus.PENDING,
+    } as unknown as Boat;
+    findOne.mockResolvedValue(boat);
 
-    await expect(
-      service.verifyBoat('boat-id', 'admin-id', {
-        status: VerificationStatus.APPROVED,
-        documentedPassengerCapacity: 7,
-      }),
-    ).rejects.toThrow('no coincide');
-    expect(save).not.toHaveBeenCalled();
+    const result = await service.verifyBoat('boat-id', 'admin-id', {
+      status: VerificationStatus.APPROVED,
+      documentedPassengerCapacity: 7,
+    });
+
+    expect(result.passengerCapacity).toBe(7);
+    expect(result.availablePassengerCapacity).toBe(7);
+    expect(result.documentedPassengerCapacity).toBe(7);
+    expect(result.verificationStatus).toBe(VerificationStatus.APPROVED);
+    expect(save).toHaveBeenCalledWith(boat);
   });
 
   it('requires a reviewed license before approving a boat', async () => {
@@ -91,6 +99,7 @@ describe('AdminService boat verification', () => {
       id: 'boat-id',
       passengerCapacity: 8,
       documents: [],
+      verificationStatus: VerificationStatus.PENDING,
     } as unknown as Boat);
 
     await expect(
@@ -99,6 +108,21 @@ describe('AdminService boat verification', () => {
         documentedPassengerCapacity: 8,
       }),
     ).rejects.toThrow('licencia');
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('does not allow changing a boat after its verification decision', async () => {
+    findOne.mockResolvedValue({
+      id: 'boat-id',
+      verificationStatus: VerificationStatus.APPROVED,
+    } as Boat);
+
+    await expect(
+      service.verifyBoat('boat-id', 'admin-id', {
+        status: VerificationStatus.APPROVED,
+        documentedPassengerCapacity: 8,
+      }),
+    ).rejects.toThrow('ya fue revisada');
     expect(save).not.toHaveBeenCalled();
   });
 });

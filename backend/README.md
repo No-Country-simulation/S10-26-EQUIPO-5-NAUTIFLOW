@@ -617,10 +617,11 @@ Aprobar:
 }
 ```
 
-Antes de aprobar, el administrador debe abrir y revisar la licencia presentada,
-ingresar la capacidad que figura en ella y compararla con la declarada. La API
-exige que exista una licencia y bloquea la aprobación si las capacidades no
-coinciden. Si hay discrepancia, rechazar la revisión indicando el motivo.
+Antes de aprobar, el administrador debe abrir y revisar la licencia presentada
+e ingresar la capacidad que figura en ella. La API exige que exista una licencia
+y toma la capacidad indicada en ella como valor definitivo, actualizando tanto
+la capacidad total como las plazas disponibles de la embarcación. Solo se puede
+decidir una vez sobre cada embarcación pendiente.
 
 Rechazar requiere un motivo:
 

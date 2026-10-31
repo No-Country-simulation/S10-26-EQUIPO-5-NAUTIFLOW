@@ -1,0 +1,36 @@
+{
+  "generatedAt": "2026-10-31T14:50:00Z",
+  "generatedOnPlatform": "win32",
+  "projectType": "webapp",
+  "setup": [],
+  "assertions": [
+    {
+      "name": "production-build",
+      "kind": "process",
+      "command": "npm",
+      "args": ["run", "build"],
+      "verificationMethod": "exit-code",
+      "expected": "0",
+      "timeoutSeconds": 300
+    },
+    {
+      "name": "tests-pass",
+      "kind": "process",
+      "command": "npm",
+      "args": ["test", "--", "--watch=false", "--browsers=ChromeHeadless"],
+      "verificationMethod": "test-results",
+      "expected": "0",
+      "timeoutSeconds": 300
+    },
+    {
+      "name": "homepage-responds",
+      "kind": "http-probe",
+      "startCommand": "npm",
+      "startArgs": ["start", "--", "--host", "127.0.0.1", "--port", "4200"],
+      "url": "http://127.0.0.1:4200/",
+      "verificationMethod": "http-status",
+      "expected": "200",
+      "timeoutSeconds": 180
+    }
+  ]
+}

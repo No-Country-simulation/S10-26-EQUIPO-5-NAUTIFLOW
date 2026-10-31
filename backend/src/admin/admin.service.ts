@@ -60,6 +60,9 @@ export class AdminService {
     if (!boat) {
       throw new NotFoundException('No existe la embarcación indicada');
     }
+    if (boat.verificationStatus !== VerificationStatus.PENDING) {
+      throw new BadRequestException('La embarcación ya fue revisada');
+    }
     if (dto.status === VerificationStatus.REJECTED && !dto.reason?.trim()) {
       throw new BadRequestException('Indica el motivo del rechazo');
     }
@@ -77,12 +80,9 @@ export class AdminService {
           'Indica la capacidad de pasajeros que figura en la licencia',
         );
       }
-      if (dto.documentedPassengerCapacity !== boat.passengerCapacity) {
-        throw new BadRequestException(
-          'La capacidad declarada no coincide con la licencia; no se puede aprobar',
-        );
-      }
       boat.documentedPassengerCapacity = dto.documentedPassengerCapacity;
+      boat.passengerCapacity = dto.documentedPassengerCapacity;
+      boat.availablePassengerCapacity = dto.documentedPassengerCapacity;
     }
 
     boat.verificationStatus = dto.status;

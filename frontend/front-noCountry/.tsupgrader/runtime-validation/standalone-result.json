@@ -1,0 +1,104 @@
+{
+  "planHash": "cce88a3fd73ae44568f848238c9bb12a63ccf6d396cf620b928eb74068509e1e",
+  "phase": "standalone",
+  "recordedAtUtc": "2026-10-31T18:50:07.8591513Z",
+  "retryCount": 1,
+  "resetBaseline": false,
+  "complete": true,
+  "result": {
+    "setupSucceeded": true,
+    "setupDurationMs": 0,
+    "setupFailureOutput": null,
+    "assertions": [
+      {
+        "name": "production-build",
+        "kind": "process",
+        "verificationMethod": "exit-code",
+        "passed": true,
+        "timedOut": false,
+        "skipped": false,
+        "skippedReason": null,
+        "exitCode": 0,
+        "outputSample": "\r\n\u003E front-no-country@0.0.0 build\r\n\u003E ng build\r\n\r\n\u003E Building...\r\n\u221A Building...\r\nBrowser bundles      \r\nInitial chunk files   | Names            |  Raw size | Estimated transfer size\r\nstyles-QQDN4CRK.css   | styles           | 386.52 kB |                28.45 kB\r\nchunk-56U4G24L.js     | -                | 349.19 kB |                91.96 kB\r\nmain-IFD5WJQO.js      | main             |  68.54 kB |                14.95 kB\r\npolyfills-5CFQRCPP.js | polyfills        |  34.59 kB |                11.33 kB\r\n\r\n                      | Initial total    | 838.83 kB |               146.69 kB\r\n\r\nLazy chunk files      | Names            |  Raw size | Estimated transfer size\r\nchunk-3RTEBECL.js     | reset-password   |   4.15 kB |                 1.66 kB\r\n\r\n\r\nServer bundles       \r\nInitial chunk files   | Names            |  Raw size\r\nserver.mjs            | server           | 958.37 kB |                        \r\nchunk-LJFRY65Q.mjs    | -                | 360.10 kB |                        \r\nmain.server.mjs       | main.server      | 353.59 kB |                        \r\npolyfills.server.mjs  | polyfills.server | 267.32 kB |                        \r\nchunk-IVM3BPZP.mjs    | -                |   2.83 kB |                        \r\nchunk-C2KJ4ATU.mjs    | -                |   1.54 kB |                        \r\n\r\nLazy chunk files      | Names            |  Raw size\r\nchunk-RBXOAK24.mjs    | xhr2             |  12.17 kB |                        \r\nchunk-Y5E4BTW3.mjs    | xhr2             |  12.08 kB |                        \r\nchunk-FQMF3BIG.mjs    | reset-password   |   4.24 kB |                        \r\n\r\nPrerendered 2 static routes.\r\nApplication bundle generation complete. [40.097 seconds] - 2026-10-31T18:48:31.842Z\r\n\r\n\u001B[33m\u25B2 \u001B[43;33m[\u001B[43;30mWARNING\u001B[43;33m]\u001B[0m \u001B[1mNG8107: NG8107: The left side of this optional chain operation does not include \u0027null\u0027 or \u0027undefined\u0027 in its type, therefore the \u0027?.\u0027 operator can be replaced with the \u0027.\u0027 operator. Find more at https://v22.angular.dev/extended-diagnostics/NG8107\u001B[0m \u001B[1m\u001B[35m[plugin angular-compiler]\u001B[0m\r\n\r\n    C:/Users/Fede/Desktop/No-Country/frontend/front-noCountry/src/app/pages/home/home.html:320:51:\r\n\u001B[37m      320 \u2502 ...ocument of registeredBoat?.\u001B[32mdocuments\u001B[37m\u0022 class=\u0022list-group-item l...\r\n          \u2575                               \u001B[32m~~~~~~~~~\u001B[0m\r\n\r\n  Warning occurs in the template of component Home.\r\n\r\n    C:/Users/Fede/Desktop/No-Country/frontend/front-noCountry/src/app/pages/home/home.ts:94:15:\r\n\u001B[37m      94 \u2502   templateUrl: \u001B[32m\u0027./home.html\u0027\u001B[37m,\r\n         \u2575                \u001B[32m~~~~~~~~~~~~~\u001B[0m\r\n\r\n\r\n\u001B[33m\u25B2 \u001B[43;33m[\u001B[43;30mWARNING\u001B[43;33m]\u001B[0m \u001B[1mbundle initial exceeded maximum budget. Budget 500.00 kB was not met by 338.83 kB with a total of 838.83 kB.\u001B[0m\r\n\r\n\r\nOutput location: C:\\Users\\Fede\\Desktop\\No-Country\\frontend\\front-noCountry\\dist\\front-no-country\r\n\r\n",
+        "durationMs": 45157
+      },
+      {
+        "name": "tests-pass",
+        "kind": "process",
+        "verificationMethod": "test-results",
+        "passed": true,
+        "timedOut": false,
+        "skipped": false,
+        "skippedReason": null,
+        "exitCode": 0,
+        "outputSample": "\r\n\u003E front-no-country@0.0.0 test\r\n\u003E ng test --watch=false --browsers=ChromeHeadless\r\n\r\nThe \u0022@angular-devkit/build-angular:karma\u0022 builder is deprecated as part of Angular\u0027s Webpack support deprecation. Use \u0022@angular/build:karma\u0022 instead. For more information, see https://angular.dev/tools/cli/build-system-migration.\r\n- Generating browser application bundles (phase: setup)...\r\n\u001B[32m\u221A\u001B[39m Browser application bundle generation complete.\r\n\u001B[32m31 10 2026 15:49:40.350:INFO [karma-server]: \u001B[39mKarma v6.4.4 server started at http://localhost:9876/\r\n\u001B[32m31 10 2026 15:49:40.364:INFO [launcher]: \u001B[39mLaunching browsers ChromeHeadless with concurrency unlimited\r\n\u001B[32m31 10 2026 15:49:40.577:INFO [launcher]: \u001B[39mStarting browser ChromeHeadless\r\n\u001B[32m31 10 2026 15:49:56.829:INFO [Chrome Headless 156.0.0.0 (Windows 10)]: \u001B[39mConnected on socket HS20WlKwh9YiFovuAAAA with id 92293837\r\nChrome Headless 156.0.0.0 (Windows 10): Executed 0 of 4\u001B[32m SUCCESS\u001B[39m (0 secs / 0 secs)\r\n\u001B[1A\u001B[2KChrome Headless 156.0.0.0 (Windows 10): Executed 1 of 4\u001B[32m SUCCESS\u001B[39m (0 secs / 0.235 secs)\r\n\u001B[1A\u001B[2KChrome Headless 156.0.0.0 (Windows 10): Executed 2 of 4\u001B[32m SUCCESS\u001B[39m (0 secs / 0.245 secs)\r\n\u001B[1A\u001B[2KChrome Headless 156.0.0.0 (Windows 10): Executed 3 of 4\u001B[32m SUCCESS\u001B[39m (0 secs / 0.252 secs)\r\n\u001B[1A\u001B[2KChrome Headless 156.0.0.0 (Windows 10): Executed 4 of 4\u001B[32m SUCCESS\u001B[39m (0 secs / 0.254 secs)\r\n\u001B[1A\u001B[2KChrome Headless 156.0.0.0 (Windows 10): Executed 4 of 4\u001B[32m SUCCESS\u001B[39m (0.507 secs / 0.254 secs)\r\n\u001B[32mTOTAL: 4 SUCCESS\u001B[39m\r\n\u001B[32m\u221A\u001B[39m Browser application bundle generation complete.\r\n\u001B[33m31 10 2026 15:50:01.147:WARN [launcher]: \u001B[39mChromeHeadless was not killed in 2000 ms, sending SIGKILL.\r\n",
+        "durationMs": 90050,
+        "testResults": {
+          "testFramework": "jasmine",
+          "runnerDetectedFrom": "package_json",
+          "testsTotal": 0,
+          "testsPassed": 0,
+          "testsFailed": 0,
+          "testsSkipped": 0,
+          "parseFailed": true
+        }
+      },
+      {
+        "name": "homepage-responds",
+        "kind": "http-probe",
+        "verificationMethod": "http-status",
+        "passed": false,
+        "timedOut": false,
+        "skipped": false,
+        "skippedReason": null,
+        "exitCode": 1,
+        "outputSample": "server exited before responding (exit=1)\n--- server output ---\n\r\n\u003E front-no-country@0.0.0 start\r\n\u003E ng serve --host 127.0.0.1 --port 4200\r\n\r\nC:\\Users\\Fede\\Desktop\\No-Country\\frontend\\front-noCountry\\node_modules\\rxjs\\dist\\cjs\\internal\\util\\reportUnhandledError.js:13\r\n            throw err;\r\n            ^\r\n\r\nError: Port 4200 is already in use. Use \u0027--port\u0027 to specify a different port.\r\n    at createInUseError (C:\\Users\\Fede\\Desktop\\No-Country\\frontend\\front-noCountry\\node_modules\\@angular\\build\\src\\utils\\check-port.js:51:12)\r\n    at Server.\u003Canonymous\u003E (C:\\Users\\Fede\\Desktop\\No-Country\\frontend\\front-noCountry\\node_modules\\@angular\\build\\src\\utils\\check-port.js:68:24)\r\n    at Object.onceWrapper (node:events:631:26)\r\n    at Server.emit (node:events:509:28)\r\n    at emitErrorNT (node:net:2044:8)\r\n    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)\r\n\r\nNode.js v24.16.0\r\n",
+        "durationMs": 5266
+      }
+    ],
+    "executions": [
+      {
+        "source": "production-build",
+        "resolvedExecutable": "C:\\Program Files\\nodejs\\npm.CMD",
+        "args": [
+          "run",
+          "build"
+        ],
+        "cwd": "C:\\Users\\Fede\\Desktop\\No-Country\\frontend\\front-noCountry",
+        "env": {},
+        "prependPath": [],
+        "platform": "win32"
+      },
+      {
+        "source": "tests-pass",
+        "resolvedExecutable": "C:\\Program Files\\nodejs\\npm.CMD",
+        "args": [
+          "test",
+          "--",
+          "--watch=false",
+          "--browsers=ChromeHeadless"
+        ],
+        "cwd": "C:\\Users\\Fede\\Desktop\\No-Country\\frontend\\front-noCountry",
+        "env": {},
+        "prependPath": [],
+        "platform": "win32"
+      },
+      {
+        "source": "homepage-responds",
+        "resolvedExecutable": "C:\\Program Files\\nodejs\\npm.CMD",
+        "args": [
+          "start",
+          "--",
+          "--host",
+          "127.0.0.1",
+          "--port",
+          "4200"
+        ],
+        "cwd": "C:\\Users\\Fede\\Desktop\\No-Country\\frontend\\front-noCountry",
+        "env": {},
+        "prependPath": [],
+        "platform": "win32"
+      }
+    ]
+  }
+}
