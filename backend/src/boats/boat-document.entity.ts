@@ -2,9 +2,12 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  JoinColumn,
+  ManyToOne,
   PrimaryGeneratedColumn,
   Unique,
 } from 'typeorm';
+import type { Boat } from './boat.entity.js';
 
 export enum BoatDocumentType {
   LICENSE = 'license',
@@ -26,6 +29,12 @@ export class BoatDocument {
 
   @Column({ name: 'boat_id', type: 'uuid' })
   boatId!: string;
+
+  @ManyToOne('Boat', (boat: Boat) => boat.documents, {
+    onDelete: 'CASCADE',
+  })
+  @JoinColumn({ name: 'boat_id' })
+  boat!: Boat;
 
   @Column({ type: 'varchar', length: 30 })
   type!: BoatDocumentType;

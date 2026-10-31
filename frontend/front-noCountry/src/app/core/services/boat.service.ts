@@ -1,4 +1,5 @@
-import { Injectable, inject } from '@angular/core';
+import { isPlatformBrowser } from '@angular/common';
+import { Injectable, inject, PLATFORM_ID } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
@@ -10,6 +11,7 @@ export interface Boat {
   coverageZone: string;
   imageUrl: string | null;
   imagePublicId: string | null;
+  verificationStatus: string;
 }
 
 @Injectable({
@@ -17,7 +19,15 @@ export interface Boat {
 })
 export class BoatsService {
   private readonly http = inject(HttpClient);
-  private readonly apiUrl = 'http://localhost:3001/api/boats';
+  private readonly platformId = inject(PLATFORM_ID);
+  private readonly apiUrl = this.createApiUrl();
+
+  private createApiUrl(): string {
+    const backendUrl = isPlatformBrowser(this.platformId)
+      ? `${window.location.protocol}//${window.location.hostname}:3001`
+      : 'http://backend:3001';
+    return `${backendUrl}/api/boats`;
+  }
 
   uploadImage(boatId: string, file: File): Observable<Boat> {
     const formData = new FormData();
@@ -28,5 +38,15 @@ export class BoatsService {
 
   uploadDocuments(boatId: string, documents: FormData): Observable<unknown> {
     return this.http.post(`${this.apiUrl}/${boatId}/documents`, documents);
+  }
+
+  listMine(token: string): Observable<Boat[]> {
+    return this.http.get<Boat[]>(`${this.apiUrl}/mine`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  }
+
+  listAvailable(): Observable<Boat[]> {
+    return this.http.get<Boat[]>(this.apiUrl);
   }
 }

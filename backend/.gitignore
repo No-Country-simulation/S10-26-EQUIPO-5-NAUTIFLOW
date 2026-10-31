@@ -44,6 +44,7 @@ lerna-debug.log*
 .env.test.local
 .env.production.local
 .env.local
+admin-seed.json
 
 # temp directory
 .temp

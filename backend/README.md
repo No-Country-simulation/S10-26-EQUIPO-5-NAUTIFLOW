@@ -1,4 +1,5 @@
 # Backend —
+
 **Propuesta técnica para el MVP de gestión de transporte fluvial**
 
 ## 1. Objetivo
@@ -35,10 +36,10 @@ docker compose up -d --build
 
 El comando anterior inicia:
 
-| Servicio | URL |
-| --- | --- |
-| Backend | <http://localhost:3001> |
-| Adminer | <http://localhost:8080> |
+| Servicio | URL                     |
+| -------- | ----------------------- |
+| Backend  | <http://localhost:3001> |
+| Adminer  | <http://localhost:8080> |
 
 En Adminer, ingresar con estos datos:
 
@@ -48,16 +49,12 @@ En Adminer, ingresar con estos datos:
 - **Contraseña:** `delta_password`
 - **Base de datos:** `delta_db`
 
-Las migraciones se montan en PostgreSQL y se ejecutan automáticamente cuando se
-crea el volumen por primera vez. Si el volumen ya existía, Docker no vuelve a
-ejecutar los scripts; en ese caso, aplicar manualmente solo las migraciones
-pendientes y en orden. Si ya se aplicaron `000` y `001`, ejecutar únicamente:
-
-```powershell
-Get-Content -Raw .\migrations\000_initial_schema.sql | docker exec -i delta-postgres psql -v ON_ERROR_STOP=1 -U delta_user -d delta_db
-Get-Content -Raw .\migrations\001_add_owner_credentials_and_password_reset.sql | docker exec -i delta-postgres psql -v ON_ERROR_STOP=1 -U delta_user -d delta_db
-Get-Content -Raw .\migrations\002_add_boat_verification_audit.sql | docker exec -i delta-postgres psql -v ON_ERROR_STOP=1 -U delta_user -d delta_db
-```
+Las migraciones iniciales se montan en PostgreSQL y se ejecutan automáticamente
+cuando se crea el volumen por primera vez. Como PostgreSQL no repite esos scripts
+en volúmenes existentes, el servicio `migrate-documents` aplica de forma segura la
+migración `005_add_boat_documents.sql` y `006_add_documented_passenger_capacity.sql`
+antes de iniciar el backend. Ambas son idempotentes y no requieren borrar el
+volumen ni los datos existentes.
 
 Para detener los contenedores:
 
@@ -108,7 +105,7 @@ Content-Type: application/json
 ```json
 {
   "fullName": "Juan Perez",
-  "email": "juan.perez@example.com",
+  "email": "juan.perez@gmail.com",
   "password": "UnaClaveSegura123",
   "phone": "1123456789"
 }
@@ -149,7 +146,7 @@ POST http://localhost:3001/api/owners/register
 ```json
 {
   "fullName": "Juan Perez",
-  "email": "juan.perez@example.com",
+  "email": "juan.perez@gmail.com",
   "password": "UnaClaveSegura123",
   "phone": "1123456789"
 }
@@ -185,7 +182,7 @@ POST http://localhost:3001/api/owners/password/forgot
 
 ```json
 {
-  "email": "juan.perez@example.com"
+  "email": "juan.perez@gmail.com"
 }
 ```
 
@@ -262,7 +259,7 @@ ORDER BY created_at DESC;
 ```sql
 SELECT id, name AS full_name, email, phone
 FROM users
-WHERE email = 'juan.perez@example.com';
+WHERE email = 'juan.perez@gmail.com';
 ```
 
 Copiar el valor de `id` de esta consulta para usarlo como `ownerId` en
@@ -322,15 +319,11 @@ WHERE b.status = 'active'
 ORDER BY b.coverage_zone, b.name;
 ```
 
-#### Aprobar o desactivar una embarcación
+#### Desactivar una embarcación
 
-Estas consultas son para tareas administrativas manuales en Adminer:
-
-```sql
-UPDATE boats
-SET verification_status = 'approved'
-WHERE registration_number = 'NAU-002';
-```
+La aprobación debe realizarse desde el endpoint autenticado para que se
+comprueben la licencia y la capacidad declarada. No aprobar directamente desde
+Adminer, porque eso omite las reglas de verificación.
 
 ```sql
 UPDATE boats
@@ -438,15 +431,15 @@ No se desarrollarán subastas en tiempo real, seguimiento GPS ni notificaciones 
 
 Se propone trabajar con las siguientes entidades principales:
 
-| Entidad | Responsabilidad |
-|---|---|
-| `User` | Usuarios, credenciales y roles. |
-| `BoatOwner` | Información del lanchero y sus datos de contacto. |
-| `Boat` | Embarcaciones, capacidad, zonas y estados. |
+| Entidad        | Responsabilidad                                    |
+| -------------- | -------------------------------------------------- |
+| `User`         | Usuarios, credenciales y roles.                    |
+| `BoatOwner`    | Información del lanchero y sus datos de contacto.  |
+| `Boat`         | Embarcaciones, capacidad, zonas y estados.         |
 | `BoatDocument` | Documentación, archivos y revisión administrativa. |
-| `Trip` | Solicitudes, asignaciones y ejecución de viajes. |
-| `Review` | Calificaciones y comentarios asociados a viajes. |
-| `EmptyLeg` | Registro de tramos de retorno vacíos. |
+| `Trip`         | Solicitudes, asignaciones y ejecución de viajes.   |
+| `Review`       | Calificaciones y comentarios asociados a viajes.   |
+| `EmptyLeg`     | Registro de tramos de retorno vacíos.              |
 
 El esquema definitivo, las cardinalidades y las restricciones se validarán antes de implementar las migraciones de base de datos.
 
@@ -477,21 +470,21 @@ Se definirán métodos HTTP, rutas, parámetros, DTO, respuestas, errores y requ
 
 Entre los endpoints previstos se encuentran:
 
-| Método | Endpoint propuesto | Función |
-|---|---|---|
-| POST | `/api/auth/login` | Iniciar sesión. |
-| POST | `/api/owners/register` | Registrar un lanchero. |
-| POST | `/api/boats` | Registrar una embarcación. |
-| POST | `/api/boats/:id/documents` | Cargar documentación. |
-| GET | `/api/admin/boats/pending` | Consultar embarcaciones pendientes. |
-| PATCH | `/api/admin/boats/:id/verification` | Aprobar o rechazar. |
-| GET | `/api/admin/boats/search` | Buscar embarcaciones. |
-| POST | `/api/admin/trips` | Registrar y asignar un viaje. |
-| PATCH | `/api/admin/trips/:id/complete` | Completar un viaje. |
-| POST | `/api/admin/trips/:id/review-link` | Generar un enlace de reseña. |
-| POST | `/api/public/reviews/:token` | Registrar una reseña. |
-| POST | `/api/admin/trips/:id/empty-leg` | Publicar un retorno vacío. |
-| GET | `/api/admin/empty-legs` | Consultar retornos disponibles. |
+| Método | Endpoint propuesto                  | Función                             |
+| ------ | ----------------------------------- | ----------------------------------- |
+| POST   | `/api/auth/login`                   | Iniciar sesión.                     |
+| POST   | `/api/owners/register`              | Registrar un lanchero.              |
+| POST   | `/api/boats`                        | Registrar una embarcación.          |
+| POST   | `/api/boats/:id/documents`          | Cargar documentación.               |
+| GET    | `/api/admin/boats/pending`          | Consultar embarcaciones pendientes. |
+| PATCH  | `/api/admin/boats/:id/verification` | Aprobar o rechazar.                 |
+| GET    | `/api/admin/boats/search`           | Buscar embarcaciones.               |
+| POST   | `/api/admin/trips`                  | Registrar y asignar un viaje.       |
+| PATCH  | `/api/admin/trips/:id/complete`     | Completar un viaje.                 |
+| POST   | `/api/admin/trips/:id/review-link`  | Generar un enlace de reseña.        |
+| POST   | `/api/public/reviews/:token`        | Registrar una reseña.               |
+| POST   | `/api/admin/trips/:id/empty-leg`    | Publicar un retorno vacío.          |
+| GET    | `/api/admin/empty-legs`             | Consultar retornos disponibles.     |
 
 Las rutas definitivas se acordarán con el equipo de frontend y se ajustarán durante la implementación.
 
@@ -515,56 +508,92 @@ registradas, dar de alta embarcaciones vinculadas a esos lancheros y revisar la
 verificación de cada embarcación. Las nuevas embarcaciones quedan pendientes
 hasta que un administrador las apruebe.
 
-### Crear el primer administrador
+### Crear tres administradores
 
-1. Configurar `JWT_SECRET` en `.env` con un valor aleatorio y privado. El valor
-   de ejemplo es solo para desarrollo local; no reutilizarlo en producción.
-2. Registrar una cuenta desde `POST /api/owners/register`, como lanchero.
-3. En Adminer, promover únicamente esa cuenta a administradora:
+1. Configurar `JWT_SECRET` en `.env` con al menos 32 bytes aleatorios. Por
+   ejemplo, en PowerShell:
 
-```sql
-UPDATE users
-SET role = 'admin'
-WHERE email = 'admin@example.com';
+   ```powershell
+   $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+   $bytes = New-Object byte[] 32
+   $rng.GetBytes($bytes)
+   [Convert]::ToBase64String($bytes)
+   $rng.Dispose()
+   ```
+
+   Copiar el resultado a `JWT_SECRET` sin publicarlo ni reutilizarlo en otros
+   entornos. El backend firma tokens HS256 con emisor `nautiflow-api`; acepta
+   solo esa firma y valida la expiración. El access token dura una hora.
+
+2. Crear `admin-seed.json` en la carpeta `backend`. El archivo está excluido
+   de Git. Completarlo con tres personas, correos distintos y contraseñas
+   únicas de al menos 12 caracteres:
+
+```json
+[
+  {
+    "name": "Admin Uno",
+    "email": "admin1@tu-dominio.com",
+    "phone": "1111111111",
+    "password": "REEMPLAZAR_POR_UNA_CLAVE_UNICA"
+  },
+  {
+    "name": "Admin Dos",
+    "email": "admin2@tu-dominio.com",
+    "phone": "2222222222",
+    "password": "REEMPLAZAR_POR_OTRA_CLAVE_UNICA"
+  },
+  {
+    "name": "Admin Tres",
+    "email": "admin3@tu-dominio.com",
+    "phone": "3333333333",
+    "password": "REEMPLAZAR_POR_OTRA_CLAVE_UNICA"
+  }
+]
 ```
 
-Verificar el resultado sin consultar ni exponer el hash de la contraseña:
+3. Con la base de datos levantada, desde PowerShell ejecutar:
 
-```sql
-SELECT id, name, email, role
-FROM users
-WHERE email = 'admin@example.com';
+```powershell
+cd C:\Users\Fede\Desktop\No-Country\backend
+$env:ALLOW_ADMIN_SEED = "true"
+pnpm seed:admins
+Remove-Item Env:\ALLOW_ADMIN_SEED
 ```
 
-La API no incluye un endpoint público para asignar roles. La promoción debe
-hacerse solo desde una conexión administrativa confiable a la base de datos.
+El script crea las tres cuentas dentro de una transacción, genera hashes
+compatibles con el login actual y no imprime las contraseñas. Si una dirección
+ya está registrada, revierte toda la operación. Requiere confirmación explícita
+y se niega a ejecutarse cuando `NODE_ENV=production`. Después de ejecutarlo,
+elimina el archivo local si ya no lo necesitas; nunca lo subas al repositorio.
 
 ### Iniciar sesión
 
-```text
-POST http://localhost:3001/api/auth/login
-Content-Type: application/json
-```
+En el frontend, abre **Iniciar sesión**, selecciona **Administrador** e ingresa
+uno de los tres correos y su contraseña. El acceso entrega un JWT de una hora;
+la API protege las operaciones administrativas y las cuentas `owner` no pueden
+usar estos endpoints.
+
+También se puede probar con Postman:
 
 ```json
 {
-  "email": "admin@example.com",
-  "password": "LaClaveUsadaAlRegistrarse"
+  "email": "admin1@tu-dominio.com",
+  "password": "LA_CLAVE_CONFIGURADA_EN_EL_ARCHIVO_LOCAL"
 }
 ```
 
-La respuesta contiene `accessToken`, válido durante una hora. En los endpoints
-administrativos enviar el token en el encabezado de autorización como Bearer.
-Las cuentas con rol `owner` no pueden iniciar una sesión administrativa.
+Enviar el `accessToken` de la respuesta en `Authorization: Bearer <token>` al
+usar directamente los endpoints administrativos.
 
 ### Operaciones disponibles
 
-| Método | Endpoint | Uso |
-|---|---|---|
-| GET | `/api/admin/owners` | Listar lancheros registrados, sin incluir hashes de contraseña. |
-| POST | `/api/admin/boats` | Dar de alta una embarcación asociada a un `ownerId` existente. |
-| GET | `/api/admin/boats/pending` | Listar embarcaciones pendientes junto con su propietario. |
-| PATCH | `/api/admin/boats/:id/verification` | Aprobar o rechazar y guardar quién tomó la decisión y cuándo. |
+| Método | Endpoint                            | Uso                                                             |
+| ------ | ----------------------------------- | --------------------------------------------------------------- |
+| GET    | `/api/admin/owners`                 | Listar lancheros registrados, sin incluir hashes de contraseña. |
+| POST   | `/api/admin/boats`                  | Dar de alta una embarcación asociada a un `ownerId` existente.  |
+| GET    | `/api/admin/boats/pending`          | Listar embarcaciones pendientes junto con su propietario.       |
+| PATCH  | `/api/admin/boats/:id/verification` | Aprobar o rechazar y guardar quién tomó la decisión y cuándo.   |
 
 Para dar de alta una embarcación, enviar el mismo cuerpo que a
 `POST /api/boats`, junto con el token administrativo:
@@ -583,9 +612,15 @@ Aprobar:
 
 ```json
 {
-  "status": "approved"
+  "status": "approved",
+  "documentedPassengerCapacity": 8
 }
 ```
+
+Antes de aprobar, el administrador debe abrir y revisar la licencia presentada,
+ingresar la capacidad que figura en ella y compararla con la declarada. La API
+exige que exista una licencia y bloquea la aprobación si las capacidades no
+coinciden. Si hay discrepancia, rechazar la revisión indicando el motivo.
 
 Rechazar requiere un motivo:
 
@@ -602,9 +637,27 @@ una sola vez antes de usar los nuevos endpoints.
 
 ## Recuperación de contraseña
 
-El registro requiere una contraseña de al menos 12 caracteres y la almacena derivada con `scrypt`; el hash no se devuelve en la respuesta. `POST /api/owners/password/forgot` recibe `{ "email": "..." }` y responde igual tanto si la cuenta existe como si no. Para una cuenta existente se genera un token aleatorio de un solo uso, se guarda únicamente su hash y se envía un enlace válido durante 30 minutos. `POST /api/owners/password/reset` recibe `{ "token": "...", "password": "..." }`, actualiza la contraseña y consume el token dentro de una transacción.
+1. En Resend, revocar cualquier clave que se haya compartido en un chat y
+   generar una nueva. Verificar el dominio remitente en Resend antes de usarlo.
+2. Guardar la nueva clave solo en `backend/.env` como `RESEND_API_KEY`; completar
+   `MAIL_FROM` con un remitente verificado y `FRONTEND_URL` con la URL del
+   frontend (`http://localhost:4200` en desarrollo local o `http://localhost:4000`
+   con Docker). No incluir la clave en Angular, en Git ni en capturas.
+3. El usuario abre el modal **Iniciar sesión > ¿Olvidaste tu contraseña?** e
+   ingresa su correo. El endpoint `POST /api/owners/password/forgot` devuelve
+   un texto genérico, exista o no la cuenta. Para una cuenta existente, genera
+   un token impredecible, guarda solo su hash y envía el enlace con Resend.
+4. El enlace vence a los 30 minutos. Un segundo pedido invalida el anterior.
+   `POST /api/owners/password/reset` valida el vencimiento y consume el token
+   en la misma transacción que cambia la contraseña; no puede usarse de nuevo.
+5. Si el enlace venció o ya se usó, el formulario lo rechaza y ofrece solicitar
+   otro. La contraseña nueva debe tener entre 12 y 128 caracteres.
 
-Configurar `RESEND_API_KEY`, `MAIL_FROM` y `FRONTEND_URL` en el entorno. El frontend debe implementar `/reset-password`, leer el parámetro `token` y enviar la nueva contraseña al endpoint de reset. La migración `migrations/001_add_owner_credentials_and_password_reset.sql` se debe aplicar antes de desplegar esta versión. El registro actual sigue siendo público; antes de producción debe limitarse o protegerse contra altas no autorizadas.
+El registro requiere correo y acepta únicamente `@gmail.com`, `@hotmail.com`
+o `@outlook.com`;
+el servidor repite la validación para que no pueda eludirse desde otro cliente.
+El hash de la contraseña se deriva con `scrypt` y nunca se devuelve en la
+respuesta. Las migraciones iniciales incluyen la tabla de tokens de recuperación.
 
 ## Reglas operativas recomendadas
 

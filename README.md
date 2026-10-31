@@ -14,6 +14,11 @@ La aplicación quedará disponible en:
 - Backend: http://localhost:3001
 - PostgreSQL: localhost:5432
 
+Al iniciar, Docker Compose espera a PostgreSQL y aplica las migraciones de
+documentos y capacidad declarada incluso si la base ya existía. No hace falta
+borrar el volumen de PostgreSQL para corregir el error
+`relation "boat_documents" does not exist`.
+
 Para detener los servicios:
 
 ```bash
@@ -44,9 +49,20 @@ CLOUDINARY_CLOUD_NAME=tu_cloud_name
 CLOUDINARY_API_KEY=tu_api_key
 CLOUDINARY_API_SECRET=tu_api_secret
 CLOUDINARY_FOLDER=nautiflow/boats
+
+# Recuperación de contraseña (requerido para enviar enlaces)
+RESEND_API_KEY=tu_clave_nueva_de_resend
+MAIL_FROM=tu_dominio_verificado@ejemplo.com
+FRONTEND_URL=http://localhost:4000
 ```
 
 Nota: la configuración de Cloudinary debe ser compatible con la cuenta que genera el `API Key` y el `API Secret`.
+Para ejecutar Angular fuera de Docker, configura `FRONTEND_URL=http://localhost:4200`.
+Configura `RESEND_API_KEY` solo en `backend/.env`, verifica el dominio remitente
+en Resend y define `MAIL_FROM` con una dirección de ese dominio. La clave que se
+compartió en el chat debe revocarse y reemplazarse; no la copies al frontend ni
+la publiques en Git. Las cuentas anteriores a la incorporación de contraseñas
+deben restablecerla por correo. No elimines el volumen de PostgreSQL.
 
 ## Estado actual de la API
 
@@ -95,11 +111,13 @@ Body JSON:
 ```json
 {
   "fullName": "Juan Perez",
-  "email": "juan@correo.com",
+  "email": "juan@gmail.com",
   "password": "PasswordSegura123",
   "phone": "+5491123456789"
 }
 ```
+
+El registro solo acepta direcciones `@gmail.com`, `@hotmail.com` y `@outlook.com`.
 
 ---
 
@@ -113,7 +131,7 @@ Body JSON:
 
 ```json
 {
-  "email": "admin@nautiflow.com",
+  "email": "admin1@tu-dominio.com",
   "password": "PasswordSegura123"
 }
 ```
@@ -172,7 +190,7 @@ Body JSON:
 
 ```json
 {
-  "email": "juan@correo.com"
+  "email": "juan@gmail.com"
 }
 ```
 
@@ -244,7 +262,7 @@ Body JSON:
 ```json
 {
   "status": "approved",
-  "reason": "Documentación correcta y embarcación validada."
+  "documentedPassengerCapacity": 10
 }
 ```
 
@@ -262,21 +280,23 @@ Valores válidos para `status`:
 - `approved`
 - `rejected`
 
-## Crear el primer admin
+## Crear tres admins
 
-Si no existe un usuario administrador, se puede hacer este flujo:
+Para crear tres administradores, con PostgreSQL levantado:
 
-1. Registrar un owner con `POST /api/owners/register`
-2. Cambiar su rol a `admin` desde la base de datos
-3. Luego hacer login con `POST /api/auth/login`
+1. Crea `backend/admin-seed.json` con tres objetos que incluyan `name`, `email`,
+   `phone` y una contraseña única de 12 a 128 caracteres. Ese archivo está
+   excluido de Git; no lo compartas ni lo subas al repositorio.
+2. Desde PowerShell ejecuta:
 
-Ejemplo SQL:
-
-```sql
-UPDATE users
-SET role = 'admin'
-WHERE email = 'admin@nautiflow.com';
+```powershell
+cd C:\Users\Fede\Desktop\No-Country\backend
+pnpm seed:admins
 ```
+
+El script crea las cuentas de forma atómica y guarda contraseñas con el mismo
+hash que utiliza el login. En la web, abre **Iniciar sesión**, selecciona
+**Administrador** e ingresa uno de los correos y su contraseña.
 
 ## Observaciones importantes
 
@@ -296,7 +316,7 @@ WHERE email = 'admin@nautiflow.com';
 ```json
 {
   "fullName": "Juan Perez",
-  "email": "juan@correo.com",
+  "email": "juan@gmail.com",
   "password": "PasswordSegura123",
   "phone": "+5491123456789"
 }
@@ -306,8 +326,8 @@ WHERE email = 'admin@nautiflow.com';
 
 ```json
 {
-  "email": "admin@nautiflow.com",
-  "password": "PasswordSegura123"
+  "email": "admin1@tu-dominio.com",
+  "password": "LA_CLAVE_CONFIGURADA_EN_EL_ARCHIVO_LOCAL"
 }
 ```
 

@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { v2 as cloudinary } from 'cloudinary';
+import { randomUUID } from 'node:crypto';
 
 export interface UploadedImage {
   secureUrl: string;
@@ -110,12 +111,13 @@ export class CloudinaryService {
 
     const resourceType = file.mimetype === 'application/pdf' ? 'raw' : 'image';
     const folder = `${this.folder}/documents`;
+    const extension = resourceType === 'raw' ? '.pdf' : '';
 
     return new Promise((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
         {
           folder,
-          public_id: `boat-${boatId}-${documentType}`,
+          public_id: `boat-${boatId}-${documentType}-${randomUUID()}${extension}`,
           resource_type: resourceType,
           overwrite: true,
           invalidate: true,

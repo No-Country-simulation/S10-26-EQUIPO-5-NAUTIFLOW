@@ -6,11 +6,13 @@ import { BoatDocument } from './boat-document.entity.js';
 import { BoatsController } from './boats.controller.js';
 import { BoatsService } from './boats.service.js';
 import { CloudinaryModule } from '../cloudinary/cloudinary.module.js';
+import { AuthModule } from '../auth/auth.module.js';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Boat, BoatDocument, Owner]),
     CloudinaryModule,
+    AuthModule,
   ],
   controllers: [BoatsController],
   providers: [BoatsService],

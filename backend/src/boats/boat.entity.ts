@@ -4,10 +4,12 @@ import {
   Entity,
   JoinColumn,
   ManyToOne,
+  OneToMany,
   PrimaryGeneratedColumn,
   Unique,
 } from 'typeorm';
 import type { Owner } from '../owners/owner.entity.js';
+import type { BoatDocument } from './boat-document.entity.js';
 
 export enum BoatStatus {
   ACTIVE = 'active',
@@ -34,6 +36,13 @@ export class Boat {
 
   @Column({ name: 'passenger_capacity', type: 'integer' })
   passengerCapacity!: number;
+
+  @Column({
+    name: 'documented_passenger_capacity',
+    type: 'integer',
+    nullable: true,
+  })
+  documentedPassengerCapacity!: number | null;
 
   @Column({ name: 'coverage_zone', length: 120 })
   coverageZone!: string;
@@ -82,6 +91,9 @@ export class Boat {
 
   @Column({ name: 'owner_id', type: 'uuid' })
   ownerId!: string;
+
+  @OneToMany('BoatDocument', (document: BoatDocument) => document.boat)
+  documents!: BoatDocument[];
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;

@@ -18,6 +18,34 @@ services:
       timeout: 5s
       retries: 10
 
+  migrate-documents:
+    image: postgres:16-alpine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${DB_PASSWORD:-delta_password}
+    volumes:
+      - ./backend/migrations/005_add_boat_documents.sql:/migrations/005_add_boat_documents.sql:ro
+      - ./backend/migrations/006_add_documented_passenger_capacity.sql:/migrations/006_add_documented_passenger_capacity.sql:ro
+    entrypoint: ["psql"]
+    command:
+      [
+        "-h",
+        "postgres",
+        "-U",
+        "delta_user",
+        "-d",
+        "delta_db",
+        "-v",
+        "ON_ERROR_STOP=1",
+        "-f",
+        "/migrations/005_add_boat_documents.sql",
+        "-f",
+        "/migrations/006_add_documented_passenger_capacity.sql",
+      ]
+    restart: "no"
+
   backend:
     build:
       context: ./backend
@@ -29,6 +57,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate-documents:
+        condition: service_completed_successfully
     environment:
       PORT: 3001
       DB_HOST: postgres
@@ -37,7 +67,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-delta_password}
       DB_DATABASE: delta_db
       JWT_SECRET: ${JWT_SECRET:-local-development-secret-change-before-use}
-      FRONTEND_URL: http://localhost:4000,http://localhost:4200
+      FRONTEND_URL: http://localhost:4000
     ports:
       - "3001:3001"
 

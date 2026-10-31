@@ -7,7 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash, randomBytes, scrypt } from 'node:crypto';
 import { promisify } from 'node:util';
-import { DataSource, MoreThan, Repository } from 'typeorm';
+import { DataSource, MoreThan, QueryFailedError, Repository } from 'typeorm';
 import { RegisterOwnerDto } from './dto/register-owner.dto.js';
 import { Owner } from './owner.entity.js';
 import { PasswordResetToken } from './password-reset-token.entity.js';
@@ -36,12 +36,6 @@ export class OwnersService {
     dto: RegisterOwnerDto,
   ): Promise<Pick<Owner, 'id' | 'fullName' | 'email' | 'phone' | 'role' | 'createdAt'>> {
     const email = dto.email.trim().toLowerCase();
-    const existingOwner = await this.ownersRepository.findOne({ where: { email } });
-
-    if (existingOwner) {
-      throw new ConflictException('Ya existe un lanchero registrado con ese email');
-    }
-
     const owner = this.ownersRepository.create({
       fullName: dto.fullName.trim(),
       email,
@@ -49,7 +43,20 @@ export class OwnersService {
       passwordHash: await this.hashPassword(dto.password),
     });
 
-    const savedOwner = await this.ownersRepository.save(owner);
+    let savedOwner: Owner;
+    try {
+      savedOwner = await this.ownersRepository.save(owner);
+    } catch (error) {
+      if (
+        error instanceof QueryFailedError &&
+        (error.driverError as { code?: string }).code === '23505'
+      ) {
+        throw new ConflictException(
+          'Ya existe un lanchero registrado con ese email',
+        );
+      }
+      throw error;
+    }
     return {
       id: savedOwner.id,
       fullName: savedOwner.fullName,
@@ -61,6 +68,7 @@ export class OwnersService {
   }
 
   async requestPasswordReset(emailAddress: string) {
+    this.resetMailer.assertConfigured();
     const email = emailAddress.trim().toLowerCase();
     const owner = await this.ownersRepository.findOne({ where: { email } });
 
