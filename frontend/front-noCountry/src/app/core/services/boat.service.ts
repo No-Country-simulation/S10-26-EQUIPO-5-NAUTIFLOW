@@ -14,8 +14,17 @@ export interface Boat {
   imagePublicId: string | null;
   verificationStatus: string;
   owner?: { fullName: string };
+  documents?: BoatDocument[];
   averageRating: number | null;
   feedbackCount: number;
+}
+
+export interface BoatDocument {
+  id: string;
+  type: 'license' | 'insurance' | 'criminalRecord';
+  fileUrl: string;
+  originalName: string;
+  verificationStatus: string;
 }
 
 @Injectable({
@@ -40,8 +49,11 @@ export class BoatsService {
     return this.http.post<Boat>(`${this.apiUrl}/${boatId}/image`, formData);
   }
 
-  uploadDocuments(boatId: string, documents: FormData): Observable<unknown> {
-    return this.http.post(`${this.apiUrl}/${boatId}/documents`, documents);
+  uploadDocuments(boatId: string, documents: FormData): Observable<BoatDocument[]> {
+    return this.http.post<BoatDocument[]>(
+      `${this.apiUrl}/${boatId}/documents`,
+      documents,
+    );
   }
 
   listMine(token: string): Observable<Boat[]> {

@@ -19,9 +19,9 @@
 .passenger-section { background: #fff; }
 .passenger-section .section-heading h2 { margin: .4rem 0; color: #17324d; }
 .passenger-search { width: min(100%, 22rem); }
-.boat-result, .account-boat { overflow: hidden; border: 1px solid #dce7ed; border-radius: .75rem; background: #fff; }
+.boat-result { overflow: hidden; border-color: #dce7ed; border-radius: .75rem; }
 .boat-result img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: #e8f0f3; }
-.boat-result-body, .account-boat { padding: 1.1rem; }
+.account-boat { overflow: hidden; border: 1px solid #dce7ed; border-radius: .75rem; padding: 1.1rem; background: #fff; }
 .boat-result h3, .account-boat h3 { margin: 0; font-size: 1.1rem; }
 .boat-result p, .account-boat p { margin: .5rem 0 0; color: #667b8c; }
 .boat-capacity, .verification-status { color: #087c72; font-size: .82rem; font-weight: 700; white-space: nowrap; }
