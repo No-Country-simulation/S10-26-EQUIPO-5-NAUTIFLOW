@@ -11,6 +11,7 @@ import { AuthModule } from './auth/auth.module.js';
 import { BoatsModule } from './boats/boats.module.js';
 import { OwnersModule } from './owners/owners.module.js';
 import { CloudinaryModule } from './cloudinary/cloudinary.module.js';
+import { PassengersModule } from './passengers/passengers.module.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
@@ -42,6 +43,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     }),
     CloudinaryModule,
     OwnersModule,
+    PassengersModule,
     BoatsModule,
     AuthModule,
     AdminModule,

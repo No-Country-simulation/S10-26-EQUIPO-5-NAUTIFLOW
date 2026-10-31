@@ -70,7 +70,9 @@ export class OwnersService {
   async requestPasswordReset(emailAddress: string) {
     this.resetMailer.assertConfigured();
     const email = emailAddress.trim().toLowerCase();
-    const owner = await this.ownersRepository.findOne({ where: { email } });
+    const owner = await this.ownersRepository.findOne({
+      where: { email, role: 'owner' },
+    });
 
     if (!owner) {
       return RESET_RESPONSE;

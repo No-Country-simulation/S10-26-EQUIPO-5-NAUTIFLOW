@@ -103,6 +103,40 @@ describe('AuthService', () => {
     });
   });
 
+  it('issues a token for valid passenger credentials through passenger login', async () => {
+    const salt = 'passenger-test-salt';
+    const password = 'a-secure-passenger-password';
+    getOne.mockResolvedValue({
+      id: 'passenger-id',
+      fullName: 'River Passenger',
+      email: 'passenger@example.com',
+      role: 'passenger',
+      passwordHash: `${salt}:${scryptSync(password, salt, 64).toString('hex')}`,
+    });
+
+    const result = await service.loginPassenger(
+      ' PASSENGER@example.com ',
+      password,
+    );
+
+    expect(jwtService.signAsync).toHaveBeenCalledWith(
+      { sub: 'passenger-id', role: 'passenger' },
+      {
+        algorithm: JWT_ALGORITHM,
+        expiresIn: JWT_EXPIRES_IN_SECONDS,
+        issuer: JWT_ISSUER,
+      },
+    );
+    expect(result).toMatchObject({
+      accessToken: 'jwt-token',
+      user: {
+        id: 'passenger-id',
+        fullName: 'River Passenger',
+        role: 'passenger',
+      },
+    });
+  });
+
   it('rejects incorrect passwords', async () => {
     const salt = 'admin-test-salt';
     getOne.mockResolvedValue({
