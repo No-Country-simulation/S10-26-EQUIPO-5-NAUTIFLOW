@@ -5,7 +5,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import {
+  Equal,
+  FindOptionsWhere,
+  ILike,
+  MoreThan,
+  MoreThanOrEqual,
+  Repository,
+} from 'typeorm';
 import { CreateBoatDto } from './dto/create-boat.dto.js';
 import { Boat, BoatStatus, VerificationStatus } from './boat.entity.js';
 import { Owner } from '../owners/owner.entity.js';
@@ -16,6 +23,10 @@ import {
   BoatDocumentType,
 } from './boat-document.entity.js';
 import { BoatFeedback } from '../passengers/boat-feedback.entity.js';
+import {
+  BoatAvailability,
+  SearchBoatsDto,
+} from './dto/search-boats.dto.js';
 
 @Injectable()
 export class BoatsService {
@@ -67,15 +78,30 @@ export class BoatsService {
     });
   }
 
-  async listAvailable(): Promise<
+  async listAvailable(
+    filters: SearchBoatsDto = {},
+  ): Promise<
     Array<Omit<Boat, 'owner'> & { owner: Pick<Owner, 'fullName'> }>
   > {
+    const where: FindOptionsWhere<Boat> = {
+      status: BoatStatus.ACTIVE,
+      verificationStatus: VerificationStatus.APPROVED,
+    };
+    if (filters.minCapacity !== undefined) {
+      where.passengerCapacity = MoreThanOrEqual(filters.minCapacity);
+    }
+    if (filters.zone?.trim()) {
+      where.coverageZone = ILike(`%${filters.zone.trim()}%`);
+    }
+    if (filters.availability === BoatAvailability.AVAILABLE) {
+      where.availablePassengerCapacity = MoreThan(0);
+    } else if (filters.availability === BoatAvailability.UNAVAILABLE) {
+      where.availablePassengerCapacity = Equal(0);
+    }
+
     const [boats, feedbackSummaries] = await Promise.all([
       this.boatsRepository.find({
-        where: {
-          status: BoatStatus.ACTIVE,
-          verificationStatus: VerificationStatus.APPROVED,
-        },
+        where,
         relations: { owner: true },
         order: { createdAt: 'DESC' },
       }),
