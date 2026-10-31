@@ -2,11 +2,22 @@
   <div class="container">
     <a class="navbar-brand fw-bold fs-3" href="#">Nauti<span>flow</span></a>
     <div class="d-flex gap-2">
-      <button class="btn btn-link nav-link" type="button" (click)="openLogin()">Iniciar sesión</button>
-      <button class="btn btn-light rounded-pill px-3" type="button" (click)="openRegistration()">Registrarse</button>
+      <ng-container *ngIf="currentUser; else guestNavigation">
+        <a class="btn btn-link nav-link" href="#mi-cuenta">{{ currentUser.fullName }}</a>
+        <button class="btn btn-light rounded-pill px-3" type="button" (click)="logout()">Cerrar sesión</button>
+      </ng-container>
+      <ng-template #guestNavigation>
+        <button class="btn btn-link nav-link" type="button" (click)="openLogin()">Iniciar sesión</button>
+        <button class="btn btn-light rounded-pill px-3" type="button" (click)="openRegistration()">Registrarse</button>
+      </ng-template>
     </div>
   </div>
 </header>
+
+<div *ngIf="authSuccessMessage" class="alert alert-success auth-feedback shadow" role="status" aria-live="polite">
+  {{ authSuccessMessage }}
+  <button type="button" class="btn-close float-end" aria-label="Cerrar mensaje" (click)="dismissAuthSuccess()"></button>
+</div>
 
 <main>
   <section class="hero-section">
@@ -30,6 +41,61 @@
           </div>
         </div>
       </div>
+    </div>
+  </section>
+
+  <section id="embarcaciones" class="passenger-section py-5">
+    <div class="container">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end gap-3 mb-4">
+        <div class="section-heading">
+          <span class="eyebrow text-primary">PARA PASAJEROS</span>
+          <h2>Encuentra tu próxima salida</h2>
+          <p>Explora embarcaciones verificadas disponibles en tu zona.</p>
+        </div>
+        <label class="passenger-search"><span class="visually-hidden">Buscar por destino o embarcación</span><input class="form-control" type="search" [(ngModel)]="passengerSearch" (ngModelChange)="filterAvailableBoats()" placeholder="Destino o embarcación" /></label>
+      </div>
+      <p *ngIf="isLoadingAvailableBoats" class="catalog-empty" role="status">Cargando embarcaciones...</p>
+      <div *ngIf="catalogError" class="alert alert-danger" role="alert">
+        {{ catalogError }}
+        <button class="btn btn-sm btn-outline-danger ms-2" type="button" (click)="retryAvailableBoats()">Reintentar</button>
+      </div>
+      <ng-container *ngIf="!isLoadingAvailableBoats && !catalogError">
+        <div *ngIf="filteredAvailableBoats.length; else emptyCatalog" class="row g-3">
+          <div class="col-12 col-md-6 col-xl-4" *ngFor="let boat of filteredAvailableBoats; trackBy: trackById">
+            <article class="boat-result h-100">
+              <img *ngIf="boat.imageUrl" [src]="boat.imageUrl" [alt]="'Embarcación ' + boat.name" loading="lazy" decoding="async" />
+              <div class="boat-result-body">
+                <div class="d-flex justify-content-between gap-3"><h3>{{ boat.name }}</h3><span class="boat-capacity">{{ boat.passengerCapacity }} pasajeros</span></div>
+                <p class="mb-0">{{ boat.coverageZone }}</p>
+              </div>
+            </article>
+          </div>
+        </div>
+        <ng-template #emptyCatalog><p class="catalog-empty">Todavía no hay embarcaciones verificadas para mostrar.</p></ng-template>
+      </ng-container>
+    </div>
+  </section>
+
+  <section *ngIf="currentUser" id="mi-cuenta" class="account-section py-5">
+    <div class="container">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end gap-2 mb-4">
+        <div><span class="eyebrow text-primary">{{ userRole === 'admin' ? 'ADMINISTRACIÓN' : 'MI CUENTA' }}</span><h2 class="h3 mb-1">Hola, {{ currentUser.fullName }}</h2><p class="text-secondary mb-0">{{ userRole === 'admin' ? 'Revisión de lancheros y embarcaciones' : 'Historial de tus embarcaciones' }}</p></div>
+      </div>
+      <div *ngIf="accountError" class="alert alert-danger">{{ accountError }}</div>
+      <ng-container *ngIf="userRole === 'owner'">
+        <div *ngIf="myBoats.length; else noOwnerBoats" class="row g-3">
+          <div class="col-12 col-md-6 col-xl-4" *ngFor="let boat of myBoats; trackBy: trackById">
+            <article class="account-boat"><div class="d-flex justify-content-between gap-3"><h3>{{ boat.name }}</h3><span class="verification-status">{{ boat.verificationStatus }}</span></div><p>{{ boat.registrationNumber }} · {{ boat.coverageZone }}</p><button class="btn btn-sm btn-outline-primary" type="button" (click)="registeredBoat = boat; openDocumentsModal()">Gestionar documentación</button></article>
+          </div>
+        </div>
+        <ng-template #noOwnerBoats><p class="catalog-empty">Aún no registraste embarcaciones.</p></ng-template>
+      </ng-container>
+      <ng-container *ngIf="userRole === 'admin'">
+        <h3 class="h5 mt-4">Embarcaciones pendientes <span class="text-secondary">({{ pendingBoats.length }})</span></h3>
+        <div *ngIf="pendingBoats.length; else noPendingBoats" class="table-responsive"><table class="table align-middle"><thead><tr><th>Embarcación</th><th>Lanchero</th><th>Zona</th><th>Capacidad (declarada/licencia)</th><th>Documentos</th><th>Acciones</th></tr></thead><tbody><tr *ngFor="let boat of pendingBoats; trackBy: trackById"><td>{{ boat.name }}<small class="d-block text-secondary">{{ boat.registrationNumber }}</small></td><td>{{ boat.owner?.fullName || 'Sin nombre' }}</td><td>{{ boat.coverageZone }}</td><td><span class="d-block">Declarada: {{ boat.passengerCapacity }}</span><label class="form-label small mt-2" [for]="'documented-capacity-' + boat.id">Según licencia</label><input class="form-control form-control-sm" type="number" min="1" max="200" [id]="'documented-capacity-' + boat.id" [ngModel]="documentedCapacities[boat.id] ?? ''" (ngModelChange)="setDocumentedCapacity(boat.id, $event)" /></td><td><a *ngFor="let document of boat.documents" class="d-block" [href]="document.fileUrl" target="_blank" rel="noopener noreferrer">{{ document.type }}<small class="d-block">{{ document.originalName }}</small></a><span *ngIf="!boat.documents?.length" class="text-danger">Sin documentos</span></td><td class="d-flex gap-2"><button class="btn btn-sm btn-success" type="button" (click)="verifyBoat(boat.id, 'approved')">Aprobar</button><button class="btn btn-sm btn-outline-danger" type="button" (click)="verifyBoat(boat.id, 'rejected')">Rechazar</button></td></tr></tbody></table></div>
+        <ng-template #noPendingBoats><p class="catalog-empty">No hay embarcaciones pendientes de revisión.</p></ng-template>
+        <h3 class="h5 mt-4">Lancheros registrados</h3><div class="row g-2"><div class="col-12 col-md-6 col-lg-4" *ngFor="let owner of adminOwners; trackBy: trackById"><div class="owner-row"><strong>{{ owner.fullName }}</strong><span>{{ owner.email }}</span></div></div></div>
+      </ng-container>
     </div>
   </section>
 
@@ -81,9 +147,9 @@
           <h3 class="h4 mb-4">Crea tu cuenta de lanchero</h3>
           <div class="row g-3">
             <div class="col-12"><label for="fullName" class="form-label">Nombre completo</label><input id="fullName" class="form-control" formControlName="fullName" placeholder="Ej. Juan Pérez" [class.is-invalid]="ownerForm.controls.fullName.touched && ownerForm.controls.fullName.invalid" /><div class="invalid-feedback">{{ ownerForm.controls.fullName.hasError('server') ? errorMessage : 'Ingresa un nombre válido.' }}</div></div>
-            <div class="col-md-6"><label for="ownerEmail" class="form-label">Correo electrónico</label><input id="ownerEmail" type="email" class="form-control" formControlName="email" placeholder="nombre@correo.com" [class.is-invalid]="ownerForm.controls.email.touched && ownerForm.controls.email.invalid" /><div class="invalid-feedback">{{ ownerForm.controls.email.hasError('server') ? errorMessage : 'Ingresa un correo válido.' }}</div></div>
+            <div class="col-md-6"><label for="ownerEmail" class="form-label">Correo electrónico</label><input id="ownerEmail" type="email" class="form-control" formControlName="email" placeholder="nombre@gmail.com" [class.is-invalid]="ownerForm.controls.email.touched && ownerForm.controls.email.invalid" /><div class="invalid-feedback">{{ ownerForm.controls.email.hasError('server') ? errorMessage : 'Usa un correo @gmail.com, @hotmail.com o @outlook.com.' }}</div></div>
             <div class="col-md-6"><label for="phone" class="form-label">Teléfono</label><input id="phone" type="tel" class="form-control" formControlName="phone" placeholder="+54 9 11 1234 5678" [class.is-invalid]="ownerForm.controls.phone.touched && ownerForm.controls.phone.invalid" /><div class="invalid-feedback">Ingresa un teléfono válido.</div></div>
-            <div class="col-12"><label for="ownerPassword" class="form-label">Contraseña</label><input id="ownerPassword" type="password" class="form-control" formControlName="password" placeholder="Mínimo 12 caracteres" [class.is-invalid]="ownerForm.controls.password.touched && ownerForm.controls.password.invalid" /><div class="invalid-feedback">La contraseña debe tener entre 12 y 128 caracteres.</div></div>
+            <div class="col-12"><label for="ownerPassword" class="form-label">Contraseña</label><div class="input-group"><input id="ownerPassword" [type]="showOwnerPassword ? 'text' : 'password'" autocomplete="new-password" class="form-control" formControlName="password" placeholder="Mínimo 12 caracteres" [class.is-invalid]="ownerForm.controls.password.touched && ownerForm.controls.password.invalid" /><button class="btn btn-outline-secondary" type="button" (click)="toggleOwnerPasswordVisibility()" [attr.aria-label]="showOwnerPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'">{{ showOwnerPassword ? 'Ocultar' : 'Mostrar' }}</button></div><div class="invalid-feedback d-block" *ngIf="ownerForm.controls.password.touched && ownerForm.controls.password.invalid">La contraseña debe tener entre 12 y 128 caracteres.</div></div>
           </div>
           <button class="btn btn-primary w-100 mt-4" type="submit" [disabled]="isSubmitting">{{ isSubmitting ? 'Cargando datos...' : 'Continuar con la lancha' }}</button>
         </form>
@@ -108,8 +174,9 @@
       </div>
       <div *ngIf="activeModal === 'login'">
         <p class="text-secondary small">Accede para gestionar tus reservas y embarcaciones.</p>
+        <div class="btn-group w-100 mb-3" role="group" aria-label="Tipo de cuenta"><button class="btn" [class.btn-primary]="loginRole === 'owner'" [class.btn-outline-secondary]="loginRole !== 'owner'" type="button" (click)="selectLoginRole('owner')">Lanchero</button><button class="btn" [class.btn-primary]="loginRole === 'admin'" [class.btn-outline-secondary]="loginRole !== 'admin'" type="button" (click)="selectLoginRole('admin')">Administrador</button></div>
         <div *ngIf="loginError" class="alert alert-danger">{{ loginError }}</div><div *ngIf="loginSuccess" class="alert alert-success">{{ loginSuccess }}</div>
-        <form [formGroup]="loginForm" (ngSubmit)="login()" novalidate><label for="loginEmail" class="form-label">Correo electrónico</label><input id="loginEmail" type="email" class="form-control mb-3" formControlName="email" [class.is-invalid]="loginForm.controls.email.touched && loginForm.controls.email.invalid" /><div class="invalid-feedback mb-2">Ingresa un correo válido.</div><label for="loginPassword" class="form-label">Contraseña</label><input id="loginPassword" type="password" class="form-control" formControlName="password" [class.is-invalid]="loginForm.controls.password.touched && loginForm.controls.password.invalid" /><div class="invalid-feedback">La contraseña es obligatoria y debe tener al menos 12 caracteres.</div><button class="btn btn-primary w-100 mt-4" type="submit" [disabled]="isLoginSubmitting">{{ isLoginSubmitting ? 'Ingresando...' : 'Iniciar sesión' }}</button></form>
+        <form [formGroup]="loginForm" (ngSubmit)="login()" novalidate><label for="loginEmail" class="form-label">Correo electrónico</label><input id="loginEmail" type="email" autocomplete="username" class="form-control mb-3" formControlName="email" [class.is-invalid]="loginForm.controls.email.touched && loginForm.controls.email.invalid" /><div class="invalid-feedback mb-2">Ingresa un correo válido.</div><label for="loginPassword" class="form-label">Contraseña</label><div class="input-group"><input id="loginPassword" [type]="showLoginPassword ? 'text' : 'password'" autocomplete="current-password" class="form-control" formControlName="password" [class.is-invalid]="loginForm.controls.password.touched && loginForm.controls.password.invalid" /><button class="btn btn-outline-secondary" type="button" (click)="toggleLoginPasswordVisibility()" [attr.aria-label]="showLoginPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'">{{ showLoginPassword ? 'Ocultar' : 'Mostrar' }}</button></div><div class="invalid-feedback d-block" *ngIf="loginForm.controls.password.touched && loginForm.controls.password.invalid">La contraseña es obligatoria y debe tener al menos 12 caracteres.</div><button class="btn btn-primary w-100 mt-4" type="submit" [disabled]="isLoginSubmitting">{{ isLoginSubmitting ? 'Ingresando...' : 'Iniciar sesión' }}</button></form>
         <button class="btn btn-link px-0 mt-3" type="button" (click)="openForgot()">¿Olvidaste tu contraseña?</button>
       </div>
       <div *ngIf="activeModal === 'forgot'">

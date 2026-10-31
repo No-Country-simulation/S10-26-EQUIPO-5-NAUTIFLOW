@@ -4,6 +4,11 @@ import { Repository } from 'typeorm';
 import { scryptSync } from 'node:crypto';
 import { Owner } from '../owners/owner.entity.js';
 import { AuthService } from './auth.service.js';
+import {
+  JWT_ALGORITHM,
+  JWT_EXPIRES_IN_SECONDS,
+  JWT_ISSUER,
+} from './jwt.constants.js';
 
 describe('AuthService', () => {
   const getOne = vi.fn();
@@ -42,7 +47,11 @@ describe('AuthService', () => {
     });
     expect(jwtService.signAsync).toHaveBeenCalledWith(
       { sub: 'admin-id', role: 'admin' },
-      { expiresIn: '1h' },
+      {
+        algorithm: JWT_ALGORITHM,
+        expiresIn: JWT_EXPIRES_IN_SECONDS,
+        issuer: JWT_ISSUER,
+      },
     );
     expect(result).toMatchObject({
       accessToken: 'jwt-token',
@@ -65,6 +74,33 @@ describe('AuthService', () => {
       service.loginAdmin('owner@example.com', password),
     ).rejects.toThrow(UnauthorizedException);
     expect(jwtService.signAsync).not.toHaveBeenCalled();
+  });
+
+  it('issues a token for valid owner credentials through owner login', async () => {
+    const salt = 'owner-test-salt';
+    const password = 'a-secure-owner-password';
+    getOne.mockResolvedValue({
+      id: 'owner-id',
+      fullName: 'Boat Owner',
+      email: 'owner@example.com',
+      role: 'owner',
+      passwordHash: `${salt}:${scryptSync(password, salt, 64).toString('hex')}`,
+    });
+
+    const result = await service.loginOwner(' OWNER@example.com ', password);
+
+    expect(jwtService.signAsync).toHaveBeenCalledWith(
+      { sub: 'owner-id', role: 'owner' },
+      {
+        algorithm: JWT_ALGORITHM,
+        expiresIn: JWT_EXPIRES_IN_SECONDS,
+        issuer: JWT_ISSUER,
+      },
+    );
+    expect(result).toMatchObject({
+      accessToken: 'jwt-token',
+      user: { id: 'owner-id', fullName: 'Boat Owner', role: 'owner' },
+    });
   });
 
   it('rejects incorrect passwords', async () => {

@@ -7,7 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CreateBoatDto } from './dto/create-boat.dto.js';
-import { Boat } from './boat.entity.js';
+import { Boat, BoatStatus, VerificationStatus } from './boat.entity.js';
 import { Owner } from '../owners/owner.entity.js';
 import { CloudinaryService } from '../cloudinary/cloudinary.service.js';
 import {
@@ -29,18 +29,15 @@ export class BoatsService {
   ) {}
 
   async create(dto: CreateBoatDto): Promise<Boat> {
-    const owner = await this.ownersRepository.findOne({
-      where: { id: dto.ownerId },
-    });
+    const registrationNumber = dto.registrationNumber.trim().toUpperCase();
+    const [owner, existingBoat] = await Promise.all([
+      this.ownersRepository.findOne({ where: { id: dto.ownerId } }),
+      this.boatsRepository.findOne({ where: { registrationNumber } }),
+    ]);
 
     if (!owner) {
       throw new NotFoundException('No existe el lanchero indicado');
     }
-
-    const registrationNumber = dto.registrationNumber.trim().toUpperCase();
-    const existingBoat = await this.boatsRepository.findOne({
-      where: { registrationNumber },
-    });
 
     if (existingBoat) {
       throw new ConflictException('La matrícula ya está registrada');
@@ -56,6 +53,23 @@ export class BoatsService {
     });
 
     return this.boatsRepository.save(boat);
+  }
+
+  listByOwner(ownerId: string): Promise<Boat[]> {
+    return this.boatsRepository.find({
+      where: { ownerId },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  listAvailable(): Promise<Boat[]> {
+    return this.boatsRepository.find({
+      where: {
+        status: BoatStatus.ACTIVE,
+        verificationStatus: VerificationStatus.APPROVED,
+      },
+      order: { createdAt: 'DESC' },
+    });
   }
 
   async uploadImage(boatId: string, file: Express.Multer.File): Promise<Boat> {
@@ -120,27 +134,45 @@ export class BoatsService {
       );
     }
 
-    const uploaded: BoatDocument[] = [];
-    try {
-      for (const type of requiredTypes) {
-        const file = files[type]![0];
-        const cloudinaryFile = await this.cloudinaryService.uploadBoatDocument(
-          file,
+    const existingDocuments = await this.documentsRepository.find({
+      where: { boatId },
+    });
+    const existingByType = new Map(
+      existingDocuments.map((document) => [document.type, document]),
+    );
+    const uploads = await Promise.allSettled(
+      requiredTypes.map(async (type) => ({
+        type,
+        file: files[type]![0],
+        cloudinaryFile: await this.cloudinaryService.uploadBoatDocument(
+          files[type]![0],
           boatId,
           type,
-        );
-        const existing = await this.documentsRepository.findOne({
-          where: { boatId, type },
-        });
-        if (existing?.filePublicId) {
-          await this.cloudinaryService.deleteImage(
-            existing.filePublicId,
-            existing.mimeType === 'application/pdf' ? 'raw' : 'image',
-          );
-        }
+        ),
+      })),
+    );
+    const successfulUploads = uploads
+      .filter((result) => result.status === 'fulfilled')
+      .map((result) => result.value);
 
-        const document = this.documentsRepository.create({
-          id: existing?.id,
+    if (successfulUploads.length !== requiredTypes.length) {
+      await Promise.allSettled(
+        successfulUploads.map(({ cloudinaryFile }) =>
+          this.cloudinaryService.deleteImage(
+            cloudinaryFile.publicId,
+            cloudinaryFile.resourceType,
+          ),
+        ),
+      );
+      const failedUpload = uploads.find((result) => result.status === 'rejected');
+      throw failedUpload?.reason;
+    }
+
+    const savedDocuments: BoatDocument[] = [];
+    try {
+      const documents = successfulUploads.map(({ type, file, cloudinaryFile }) =>
+        this.documentsRepository.create({
+          id: existingByType.get(type)?.id,
           boatId,
           type,
           fileUrl: cloudinaryFile.secureUrl,
@@ -149,18 +181,32 @@ export class BoatsService {
           mimeType: file.mimetype,
           fileSize: file.size,
           verificationStatus: BoatDocumentStatus.PENDING,
-        });
-        uploaded.push(await this.documentsRepository.save(document));
-      }
-      return uploaded;
+        }),
+      );
+      savedDocuments.push(...(await this.documentsRepository.save(documents)));
     } catch (error) {
-      for (const document of uploaded) {
-        await this.cloudinaryService.deleteImage(
-          document.filePublicId,
-          document.mimeType === 'application/pdf' ? 'raw' : 'image',
-        );
-      }
+      await Promise.allSettled(
+        successfulUploads.map(({ cloudinaryFile }) =>
+          this.cloudinaryService.deleteImage(
+            cloudinaryFile.publicId,
+            cloudinaryFile.resourceType,
+          ),
+        ),
+      );
       throw error;
     }
+
+    await Promise.allSettled(
+      successfulUploads.map(({ type }) => {
+        const previous = existingByType.get(type);
+        if (!previous?.filePublicId) return Promise.resolve();
+        return this.cloudinaryService.deleteImage(
+          previous.filePublicId,
+          previous.mimeType === 'application/pdf' ? 'raw' : 'image',
+        );
+      }),
+    );
+
+    return savedDocuments;
   }
 }

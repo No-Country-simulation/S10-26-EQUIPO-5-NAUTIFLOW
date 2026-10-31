@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import type { Request } from 'express';
+import { JWT_ALGORITHM, JWT_ISSUER } from './jwt.constants.js';
 
 interface AdminTokenPayload {
   sub: string;
@@ -31,15 +32,22 @@ export class AdminAuthGuard implements CanActivate {
     }
 
     try {
-      request.user = await this.jwtService.verifyAsync<AdminTokenPayload>(
-        parts[1],
-      );
+      const payload = await this.jwtService.verifyAsync<
+        Record<string, unknown>
+      >(parts[1], {
+        algorithms: [JWT_ALGORITHM],
+        issuer: JWT_ISSUER,
+      });
+      if (
+        typeof payload.sub !== 'string' ||
+        !payload.sub ||
+        typeof payload.role !== 'string'
+      ) {
+        throw new UnauthorizedException('El token no identifica al usuario');
+      }
+      request.user = { sub: payload.sub, role: payload.role };
     } catch {
       throw new UnauthorizedException('El token es inválido o venció');
-    }
-
-    if (typeof request.user.sub !== 'string' || !request.user.sub) {
-      throw new UnauthorizedException('El token no identifica al usuario');
     }
     if (request.user.role !== 'admin') {
       throw new ForbiddenException('Se requiere el rol de administrador');

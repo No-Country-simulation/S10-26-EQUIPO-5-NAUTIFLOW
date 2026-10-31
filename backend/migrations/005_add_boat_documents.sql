@@ -1,4 +1,4 @@
-CREATE TABLE boat_documents (
+CREATE TABLE IF NOT EXISTS boat_documents (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   boat_id uuid NOT NULL REFERENCES boats(id) ON DELETE CASCADE,
   type varchar(30) NOT NULL CHECK (type IN ('license', 'insurance', 'criminalRecord')),
@@ -13,4 +13,4 @@ CREATE TABLE boat_documents (
   CONSTRAINT uq_boat_documents_boat_type UNIQUE (boat_id, type)
 );
 
-CREATE INDEX idx_boat_documents_boat_id ON boat_documents (boat_id);
+CREATE INDEX IF NOT EXISTS idx_boat_documents_boat_id ON boat_documents (boat_id);

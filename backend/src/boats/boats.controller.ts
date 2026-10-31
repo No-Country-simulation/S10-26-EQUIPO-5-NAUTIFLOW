@@ -2,6 +2,7 @@ import {
   Body,
   BadRequestException,
   Controller,
+  Get,
   Param,
   ParseFilePipeBuilder,
   ParseUUIDPipe,
@@ -9,7 +10,10 @@ import {
   UploadedFile,
   UseInterceptors,
   UploadedFiles,
+  Req,
+  UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import {
   FileFieldsInterceptor,
   FileInterceptor,
@@ -18,10 +22,26 @@ import { memoryStorage } from 'multer';
 import { CreateBoatDto } from './dto/create-boat.dto.js';
 import { BoatsService } from './boats.service.js';
 import { BoatDocumentType } from './boat-document.entity.js';
+import { OwnerAuthGuard } from '../auth/owner-auth.guard.js';
+
+interface AuthenticatedRequest extends Request {
+  user: { sub: string };
+}
 
 @Controller('api/boats')
 export class BoatsController {
   constructor(private readonly boatsService: BoatsService) {}
+
+  @Get()
+  listAvailable() {
+    return this.boatsService.listAvailable();
+  }
+
+  @Get('mine')
+  @UseGuards(OwnerAuthGuard)
+  listMine(@Req() request: AuthenticatedRequest) {
+    return this.boatsService.listByOwner(request.user.sub);
+  }
 
   @Post()
   create(@Body() dto: CreateBoatDto) {

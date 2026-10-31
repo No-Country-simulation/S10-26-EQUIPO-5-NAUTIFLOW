@@ -6,9 +6,9 @@ import { Owner } from '../owners/owner.entity.js';
 import { AdminService } from './admin.service.js';
 
 describe('AdminService boat verification', () => {
-  const findOneBy = vi.fn();
+  const findOne = vi.fn();
   const save = vi.fn((boat) => Promise.resolve(boat));
-  const boatsRepository = { findOneBy, save };
+  const boatsRepository = { findOne, save };
   const ownersRepository = {};
   const boatsService = { create: vi.fn() };
 
@@ -26,12 +26,14 @@ describe('AdminService boat verification', () => {
   it('records the decision, reason, administrator, and timestamp', async () => {
     const boat = {
       id: 'boat-id',
+      passengerCapacity: 8,
+      documents: [{ type: 'license' }],
       verificationStatus: 'pending',
       verificationReason: null,
       verifiedBy: null,
       verifiedAt: null,
     } as unknown as Boat;
-    findOneBy.mockResolvedValue(boat);
+    findOne.mockResolvedValue(boat);
 
     const result = await service.verifyBoat('boat-id', 'admin-id', {
       status: VerificationStatus.REJECTED,
@@ -46,7 +48,7 @@ describe('AdminService boat verification', () => {
   });
 
   it('requires a reason when rejecting a boat', async () => {
-    findOneBy.mockResolvedValue({
+    findOne.mockResolvedValue({
       id: 'boat-id',
     } as Boat);
 
@@ -59,12 +61,44 @@ describe('AdminService boat verification', () => {
   });
 
   it('returns not found for an unknown boat', async () => {
-    findOneBy.mockResolvedValue(null);
+    findOne.mockResolvedValue(null);
 
     await expect(
       service.verifyBoat('missing-id', 'admin-id', {
         status: VerificationStatus.APPROVED,
       }),
     ).rejects.toThrow(NotFoundException);
+  });
+
+  it('blocks approval when the capacity on the license differs', async () => {
+    findOne.mockResolvedValue({
+      id: 'boat-id',
+      passengerCapacity: 8,
+      documents: [{ type: 'license' }],
+    } as unknown as Boat);
+
+    await expect(
+      service.verifyBoat('boat-id', 'admin-id', {
+        status: VerificationStatus.APPROVED,
+        documentedPassengerCapacity: 7,
+      }),
+    ).rejects.toThrow('no coincide');
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('requires a reviewed license before approving a boat', async () => {
+    findOne.mockResolvedValue({
+      id: 'boat-id',
+      passengerCapacity: 8,
+      documents: [],
+    } as unknown as Boat);
+
+    await expect(
+      service.verifyBoat('boat-id', 'admin-id', {
+        status: VerificationStatus.APPROVED,
+        documentedPassengerCapacity: 8,
+      }),
+    ).rejects.toThrow('licencia');
+    expect(save).not.toHaveBeenCalled();
   });
 });
