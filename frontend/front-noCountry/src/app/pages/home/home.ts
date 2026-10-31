@@ -27,8 +27,35 @@ interface BoatResponse {
 
 interface AccountResponse {
   accessToken: string;
-  user?: { id: string; fullName: string; email: string; role: string };
-  admin?: { id: string; fullName: string; email: string };
+  user?: AccountUser;
+  admin?: AccountUser;
+}
+
+interface AccountUser {
+  id: string;
+  fullName: string;
+  email: string;
+  role?: string;
+}
+
+interface PassengerResponse {
+  id: string;
+  fullName: string;
+  email: string;
+}
+
+interface PassengerFeedback {
+  id: string;
+  rating: number;
+  comment: string | null;
+  createdAt: string;
+}
+
+interface PassengerBooking {
+  id: string;
+  createdAt: string;
+  feedback: PassengerFeedback | null;
+  boat: Boat;
 }
 
 interface AdminBoat extends Boat {
@@ -46,6 +73,11 @@ type OwnerForm = FormGroup<{
   fullName: FormControl<string>;
   email: FormControl<string>;
   phone: FormControl<string>;
+  password: FormControl<string>;
+}>;
+type PassengerForm = FormGroup<{
+  fullName: FormControl<string>;
+  email: FormControl<string>;
   password: FormControl<string>;
 }>;
 type BoatForm = FormGroup<{
@@ -70,6 +102,7 @@ export class Home {
   private readonly apiUrl: string;
   private readonly isBrowser: boolean;
   currentStep = 1;
+  registrationRole: 'owner' | 'passenger' = 'owner';
   activeModal: 'login' | 'forgot' | 'register' | null = null;
   isSubmitting = false;
   isLoginSubmitting = false;
@@ -80,14 +113,15 @@ export class Home {
   loginSuccess = '';
   authSuccessMessage = '';
   showOwnerPassword = false;
+  showPassengerPassword = false;
   showLoginPassword = false;
   forgotError = '';
   forgotSuccess = '';
   registeredOwner?: OwnerResponse;
   registeredBoat?: BoatResponse;
-  currentUser?: { id: string; fullName: string; email: string };
-  userRole: 'owner' | 'admin' | null = null;
-  loginRole: 'owner' | 'admin' = 'owner';
+  currentUser?: AccountUser;
+  userRole: 'owner' | 'admin' | 'passenger' | null = null;
+  loginRole: 'owner' | 'admin' | 'passenger' = 'owner';
   myBoats: Boat[] = [];
   availableBoats: Boat[] = [];
   filteredAvailableBoats: Boat[] = [];
@@ -98,6 +132,12 @@ export class Home {
   adminOwners: { id: string; fullName: string; email: string }[] = [];
   accountError = '';
   passengerSearch = '';
+  passengerBookings: PassengerBooking[] = [];
+  bookingError = '';
+  bookingSuccess = '';
+  feedbackDrafts: Record<string, { rating: number; comment: string }> = {};
+  reservingBoatId: string | null = null;
+  submittingFeedbackId: string | null = null;
   showDocumentsModal = false;
   isUploadingDocuments = false;
   documentsError = '';
@@ -112,6 +152,7 @@ export class Home {
   ];
 
   readonly ownerForm: OwnerForm;
+  readonly passengerForm: PassengerForm;
   readonly boatForm: BoatForm;
   readonly loginForm: LoginForm;
   readonly forgotForm: ForgotForm;
@@ -147,6 +188,11 @@ export class Home {
       phone: ['', [Validators.required, Validators.minLength(6), Validators.maxLength(30)]],
       password: ['', [Validators.required, Validators.minLength(12), Validators.maxLength(128)]],
     });
+    this.passengerForm = this.formBuilder.nonNullable.group({
+      fullName: ['', [Validators.required, Validators.minLength(2), Validators.maxLength(120)]],
+      email: ['', [Validators.required, Validators.email, Validators.maxLength(320)]],
+      password: ['', [Validators.required, Validators.minLength(12), Validators.maxLength(128)]],
+    });
     this.boatForm = this.formBuilder.nonNullable.group({
       registrationNumber: ['', [Validators.required, Validators.maxLength(30)]],
       name: ['', [Validators.required, Validators.maxLength(120)]],
@@ -169,7 +215,14 @@ export class Home {
     this.errorMessage = '';
     this.successMessage = '';
     this.authSuccessMessage = '';
+    this.registrationRole = 'owner';
     this.activeModal = 'register';
+  }
+
+  selectRegistrationRole(role: 'owner' | 'passenger'): void {
+    this.registrationRole = role;
+    this.errorMessage = '';
+    this.successMessage = '';
   }
 
   openLogin(): void {
@@ -179,8 +232,17 @@ export class Home {
     this.activeModal = 'login';
   }
 
+  openPassengerLogin(): void {
+    this.loginRole = 'passenger';
+    this.openLogin();
+  }
+
   toggleOwnerPasswordVisibility(): void {
     this.showOwnerPassword = !this.showOwnerPassword;
+  }
+
+  togglePassengerPasswordVisibility(): void {
+    this.showPassengerPassword = !this.showPassengerPassword;
   }
 
   toggleLoginPasswordVisibility(): void {
@@ -191,7 +253,7 @@ export class Home {
     this.authSuccessMessage = '';
   }
 
-  selectLoginRole(role: 'owner' | 'admin'): void {
+  selectLoginRole(role: 'owner' | 'admin' | 'passenger'): void {
     this.loginRole = role;
     this.loginError = '';
   }
@@ -228,6 +290,58 @@ export class Home {
       },
       error: (error: HttpErrorResponse) => this.handleError(error, this.ownerForm),
     });
+  }
+
+  registerPassenger(): void {
+    this.errorMessage = '';
+    if (this.passengerForm.invalid) {
+      this.passengerForm.markAllAsTouched();
+      this.errorMessage = 'Revisa los campos marcados antes de continuar.';
+      return;
+    }
+
+    const passengerCredentials = this.passengerForm.getRawValue();
+    this.isSubmitting = true;
+    this.http
+      .post<PassengerResponse>(
+        `${this.apiUrl}/passengers/register`,
+        passengerCredentials,
+      )
+      .subscribe({
+        next: () => {
+          this.http
+            .post<AccountResponse>(
+              `${this.apiUrl}/auth/passenger-login`,
+              {
+                email: passengerCredentials.email,
+                password: passengerCredentials.password,
+              },
+            )
+            .subscribe({
+              next: (response) => {
+                this.isSubmitting = false;
+                this.passengerForm.reset();
+                this.completeLogin(
+                  response,
+                  'passenger',
+                  'Cuenta de pasajero creada. ¡Bienvenido!',
+                );
+              },
+              error: (error: HttpErrorResponse) => {
+                this.isSubmitting = false;
+                this.loginRole = 'passenger';
+                this.loginForm.setValue({
+                  email: passengerCredentials.email,
+                  password: passengerCredentials.password,
+                });
+                this.activeModal = 'login';
+                this.loginError = `La cuenta se creó, pero no se pudo iniciar sesión: ${this.messageFromError(error)}`;
+              },
+            });
+        },
+        error: (error: HttpErrorResponse) =>
+          this.handleError(error, this.passengerForm),
+      });
   }
 
   registerBoat(): void {
@@ -307,23 +421,15 @@ export class Home {
       return;
     }
     this.isLoginSubmitting = true;
-    const endpoint = this.loginRole === 'admin' ? 'login' : 'owner-login';
+    const endpoint = {
+      admin: 'login',
+      owner: 'owner-login',
+      passenger: 'passenger-login',
+    }[this.loginRole];
     this.http.post<AccountResponse>(`${this.apiUrl}/auth/${endpoint}`, this.loginForm.getRawValue()).subscribe({
       next: (response) => {
         this.isLoginSubmitting = false;
-        const account = response.user ?? response.admin;
-        const role = this.loginRole;
-        if (this.isBrowser) {
-          localStorage.setItem('nautiflow_access_token', response.accessToken);
-          localStorage.setItem('nautiflow_role', role);
-          if (account) localStorage.setItem('nautiflow_user', JSON.stringify(account));
-        }
-        this.currentUser = account;
-        this.userRole = role;
-        this.loadAccountData();
-        this.loginSuccess = 'Inicio de sesión exitoso.';
-        this.authSuccessMessage = this.loginSuccess;
-        this.activeModal = null;
+        this.completeLogin(response, this.loginRole, 'Inicio de sesión exitoso.');
         this.loginForm.reset();
       },
       error: (error: HttpErrorResponse) => {
@@ -332,6 +438,29 @@ export class Home {
         this.loginError = this.messageFromError(error);
       },
     });
+  }
+
+  private completeLogin(
+    response: AccountResponse,
+    role: 'owner' | 'admin' | 'passenger',
+    message: string,
+  ): void {
+    const account = response.user ?? response.admin;
+    if (!account) {
+      this.loginError = 'La respuesta de autenticación no contiene la cuenta.';
+      return;
+    }
+    if (this.isBrowser) {
+      localStorage.setItem('nautiflow_access_token', response.accessToken);
+      localStorage.setItem('nautiflow_role', role);
+      localStorage.setItem('nautiflow_user', JSON.stringify(account));
+    }
+    this.currentUser = account;
+    this.userRole = role;
+    this.loadAccountData();
+    this.loginSuccess = message;
+    this.authSuccessMessage = message;
+    this.activeModal = null;
   }
 
   logout(): void {
@@ -344,6 +473,7 @@ export class Home {
     this.currentUser = undefined;
     this.userRole = null;
     this.myBoats = [];
+    this.passengerBookings = [];
     this.pendingBoats = [];
     this.adminOwners = [];
   }
@@ -352,13 +482,88 @@ export class Home {
     const search = this.passengerSearch.trim().toLowerCase();
     this.filteredAvailableBoats = search
       ? this.availableBoats.filter((boat) =>
-          `${boat.name} ${boat.coverageZone}`.toLowerCase().includes(search),
+          `${boat.name} ${boat.coverageZone} ${boat.owner?.fullName ?? ''}`
+            .toLowerCase()
+            .includes(search),
         )
       : this.availableBoats;
   }
 
   trackById<T extends { id: string }>(_index: number, item: T): string {
     return item.id;
+  }
+
+  hasBookingForBoat(boatId: string): boolean {
+    return this.passengerBookings.some((booking) => booking.boat.id === boatId);
+  }
+
+  registerForBoat(boat: Boat): void {
+    if (this.userRole !== 'passenger') {
+      this.openPassengerLogin();
+      return;
+    }
+    if (this.hasBookingForBoat(boat.id)) return;
+    if (boat.availablePassengerCapacity < 1) {
+      this.bookingError = 'La embarcación ya no tiene plazas disponibles.';
+      return;
+    }
+
+    const token = this.getAccessToken();
+    if (!token) {
+      this.openPassengerLogin();
+      return;
+    }
+
+    this.bookingError = '';
+    this.bookingSuccess = '';
+    this.reservingBoatId = boat.id;
+    this.http
+      .post<PassengerBooking>(
+        `${this.apiUrl}/passengers/boats/${boat.id}/register`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } },
+      )
+      .subscribe({
+        next: () => {
+          this.reservingBoatId = null;
+          this.bookingSuccess = `Tu plaza en ${boat.name} quedó registrada.`;
+          this.loadAvailableBoats();
+          this.loadPassengerBookings();
+        },
+        error: (error: HttpErrorResponse) => {
+          this.reservingBoatId = null;
+          this.bookingError = this.messageFromError(error);
+          this.loadAvailableBoats();
+        },
+      });
+  }
+
+  submitFeedback(bookingId: string): void {
+    const draft = this.feedbackDrafts[bookingId];
+    const token = this.getAccessToken();
+    if (!draft || !token || !Number.isInteger(draft.rating)) return;
+
+    this.bookingError = '';
+    this.bookingSuccess = '';
+    this.submittingFeedbackId = bookingId;
+    this.http
+      .post<PassengerFeedback>(
+        `${this.apiUrl}/passengers/bookings/${bookingId}/feedback`,
+        { rating: draft.rating, comment: draft.comment },
+        { headers: { Authorization: `Bearer ${token}` } },
+      )
+      .subscribe({
+        next: () => {
+          this.submittingFeedbackId = null;
+          this.bookingSuccess = 'Gracias por compartir tu opinión del lanchero.';
+          this.loadPassengerBookings();
+          this.loadAvailableBoats();
+        },
+        error: (error: HttpErrorResponse) => {
+          this.submittingFeedbackId = null;
+          this.bookingError = this.messageFromError(error);
+        },
+      });
   }
 
   verifyBoat(boatId: string, status: 'approved' | 'rejected'): void {
@@ -402,7 +607,11 @@ export class Home {
     const role = localStorage.getItem('nautiflow_role');
     const accessToken = localStorage.getItem('nautiflow_access_token');
     const serializedUser = localStorage.getItem('nautiflow_user');
-    if (!accessToken || (role !== 'owner' && role !== 'admin')) return;
+    if (
+      !accessToken ||
+      (role !== 'owner' && role !== 'admin' && role !== 'passenger')
+    )
+      return;
     this.userRole = role;
     if (serializedUser) {
       try {
@@ -428,7 +637,29 @@ export class Home {
       });
     } else if (this.userRole === 'admin') {
       this.loadAdminData();
+    } else if (this.userRole === 'passenger') {
+      this.loadPassengerBookings();
     }
+  }
+
+  private loadPassengerBookings(): void {
+    const token = this.getAccessToken();
+    if (!token) return;
+    this.http
+      .get<PassengerBooking[]>(`${this.apiUrl}/passengers/bookings`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      .subscribe({
+        next: (bookings) => {
+          this.passengerBookings = bookings;
+          for (const booking of bookings) {
+            this.feedbackDrafts[booking.id] ??= { rating: 5, comment: '' };
+          }
+        },
+        error: (error: HttpErrorResponse) => {
+          this.bookingError = this.messageFromError(error);
+        },
+      });
   }
 
   private loadAdminData(): void {

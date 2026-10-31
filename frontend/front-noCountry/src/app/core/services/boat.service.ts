@@ -8,10 +8,14 @@ export interface Boat {
   registrationNumber: string;
   name: string;
   passengerCapacity: number;
+  availablePassengerCapacity: number;
   coverageZone: string;
   imageUrl: string | null;
   imagePublicId: string | null;
   verificationStatus: string;
+  owner?: { fullName: string };
+  averageRating: number | null;
+  feedbackCount: number;
 }
 
 @Injectable({
