@@ -13,7 +13,7 @@ export interface Boat {
   imageUrl: string | null;
   imagePublicId: string | null;
   verificationStatus: string;
-  owner?: { fullName: string };
+  owner?: { fullName: string; whatsappUrl?: string | null };
   documents?: BoatDocument[];
   averageRating: number | null;
   feedbackCount: number;
