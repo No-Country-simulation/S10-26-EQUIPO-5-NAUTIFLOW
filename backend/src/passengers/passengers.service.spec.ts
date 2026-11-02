@@ -2,9 +2,11 @@ import { DataSource, QueryFailedError, Repository } from 'typeorm';
 import { ConflictException } from '@nestjs/common';
 import { Boat, BoatStatus, VerificationStatus } from '../boats/boat.entity.js';
 import { BoatDocument } from '../boats/boat-document.entity.js';
+import { BoatAvailabilityWindow } from '../admin/boat-availability.entity.js';
 import { Owner } from '../owners/owner.entity.js';
 import { BoatBooking } from './boat-booking.entity.js';
 import { BoatFeedback } from './boat-feedback.entity.js';
+import { OwnerNotification } from '../owners/owner-notification.entity.js';
 import { PassengersService } from './passengers.service.js';
 
 describe('PassengersService', () => {
@@ -15,10 +17,6 @@ describe('PassengersService', () => {
   const bookingsRepository = {
     find: vi.fn(),
     findOne: vi.fn(),
-  };
-  const feedbackRepository = {
-    create: vi.fn((value) => value),
-    save: vi.fn(),
   };
   const dataSource = { transaction: vi.fn() };
 
@@ -33,13 +31,9 @@ describe('PassengersService', () => {
         createdAt: new Date(),
       }),
     );
-    feedbackRepository.save.mockImplementation((feedback) =>
-      Promise.resolve({ ...feedback, id: 'feedback-id', createdAt: new Date() }),
-    );
     service = new PassengersService(
       usersRepository as unknown as Repository<Owner>,
       bookingsRepository as unknown as Repository<BoatBooking>,
-      feedbackRepository as unknown as Repository<BoatFeedback>,
       dataSource as never,
     );
   });
@@ -52,7 +46,15 @@ describe('PassengersService', () => {
       username: 'test',
       password: 'test',
       database: 'test',
-      entities: [Owner, Boat, BoatDocument, BoatBooking, BoatFeedback],
+      entities: [
+        Owner,
+        Boat,
+        BoatAvailabilityWindow,
+        BoatDocument,
+        BoatBooking,
+        BoatFeedback,
+        OwnerNotification,
+      ],
     });
 
     await (
@@ -174,13 +176,26 @@ describe('PassengersService', () => {
       boatId: 'boat-id',
       boat: { ownerId: 'owner-id' },
     });
+    const feedback = {
+      id: 'feedback-id',
+      rating: 5,
+      comment: 'Excelente paseo',
+      createdAt: new Date(),
+    };
+    const manager = {
+      create: vi.fn((_entity, value) => value),
+      save: vi.fn((entity) =>
+        Promise.resolve(entity === BoatFeedback ? feedback : undefined),
+      ),
+    };
+    dataSource.transaction.mockImplementation((work) => work(manager as never));
 
     const result = await service.leaveFeedback('passenger-id', 'booking-id', {
       rating: 5,
       comment: '  Excelente paseo  ',
     });
 
-    expect(feedbackRepository.create).toHaveBeenCalledWith({
+    expect(manager.create).toHaveBeenCalledWith(BoatFeedback, {
       bookingId: 'booking-id',
       boatId: 'boat-id',
       passengerId: 'passenger-id',
@@ -188,10 +203,45 @@ describe('PassengersService', () => {
       rating: 5,
       comment: 'Excelente paseo',
     });
+    expect(manager.save).toHaveBeenNthCalledWith(
+      2,
+      OwnerNotification,
+      expect.objectContaining({
+        ownerId: 'owner-id',
+        feedbackId: 'feedback-id',
+        message: 'Recibiste una nueva calificación de 5/5.',
+      }),
+    );
     expect(result).toMatchObject({
       id: 'feedback-id',
       rating: 5,
       comment: 'Excelente paseo',
     });
+  });
+
+  it('propagates notification persistence failures', async () => {
+    bookingsRepository.findOne.mockResolvedValue({
+      id: 'booking-id',
+      boatId: 'boat-id',
+      boat: { ownerId: 'owner-id' },
+    });
+    const manager = {
+      create: vi.fn((_entity, value) => value),
+      save: vi
+        .fn()
+        .mockResolvedValueOnce({
+          id: 'feedback-id',
+          rating: 5,
+          comment: null,
+          createdAt: new Date(),
+        })
+        .mockRejectedValueOnce(new Error('notification insert failed')),
+    };
+    dataSource.transaction.mockImplementation((work) => work(manager as never));
+
+    await expect(
+      service.leaveFeedback('passenger-id', 'booking-id', { rating: 5 }),
+    ).rejects.toThrow('notification insert failed');
+    expect(manager.save).toHaveBeenCalledTimes(2);
   });
 });

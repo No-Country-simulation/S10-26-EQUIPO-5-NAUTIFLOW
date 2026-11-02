@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module.js';
 import { Boat } from '../boats/boat.entity.js';
 import { Owner } from '../owners/owner.entity.js';
+import { OwnerNotification } from '../owners/owner-notification.entity.js';
 import { BoatBooking } from './boat-booking.entity.js';
 import { BoatFeedback } from './boat-feedback.entity.js';
 import { PassengersController } from './passengers.controller.js';
@@ -10,7 +11,13 @@ import { PassengersService } from './passengers.service.js';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Owner, Boat, BoatBooking, BoatFeedback]),
+    TypeOrmModule.forFeature([
+      Owner,
+      Boat,
+      BoatBooking,
+      BoatFeedback,
+      OwnerNotification,
+    ]),
     AuthModule,
   ],
   controllers: [PassengersController],

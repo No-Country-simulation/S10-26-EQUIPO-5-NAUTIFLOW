@@ -51,10 +51,10 @@ En Adminer, ingresar con estos datos:
 
 Las migraciones iniciales se montan en PostgreSQL y se ejecutan automáticamente
 cuando se crea el volumen por primera vez. Como PostgreSQL no repite esos scripts
-en volúmenes existentes, el servicio `migrate-documents` aplica de forma segura la
-migración `005_add_boat_documents.sql` y `006_add_documented_passenger_capacity.sql`
-antes de iniciar el backend. Ambas son idempotentes y no requieren borrar el
-volumen ni los datos existentes.
+en volúmenes existentes, el servicio `migrate-documents` aplica de forma segura
+las migraciones `005_add_boat_documents.sql` a `009_add_admin_operations.sql`
+antes de iniciar el backend. Son idempotentes y no requieren borrar el volumen
+ni los datos existentes.
 
 Para detener los contenedores:
 
@@ -478,13 +478,14 @@ Entre los endpoints previstos se encuentran:
 | POST   | `/api/boats/:id/documents`          | Cargar documentación.               |
 | GET    | `/api/admin/boats/pending`          | Consultar embarcaciones pendientes. |
 | PATCH  | `/api/admin/boats/:id/verification` | Aprobar o rechazar.                 |
-| GET    | `/api/admin/boats/search`           | Buscar embarcaciones.               |
+| GET    | `/api/admin/fleet/search`            | Buscar flota por plazas, zona y horario. |
 | POST   | `/api/admin/trips`                  | Registrar y asignar un viaje.       |
 | PATCH  | `/api/admin/trips/:id/complete`     | Completar un viaje.                 |
 | POST   | `/api/admin/trips/:id/review-link`  | Generar un enlace de reseña.        |
 | POST   | `/api/public/reviews/:token`        | Registrar una reseña.               |
-| POST   | `/api/admin/trips/:id/empty-leg`    | Publicar un retorno vacío.          |
 | GET    | `/api/admin/empty-legs`             | Consultar retornos disponibles.     |
+| POST   | `/api/admin/empty-legs`              | Publicar manualmente un retorno vacío. |
+| GET    | `/api/owners/notifications`           | Consultar notificaciones del lanchero autenticado. |
 
 Las rutas definitivas se acordarán con el equipo de frontend y se ajustarán durante la implementación.
 
@@ -497,6 +498,53 @@ El primer flujo implementado incluye:
 - La capacidad declarada debe ser un entero entre 1 y 200.
 - Una matrícula se normaliza a mayúsculas y no puede registrarse más de una vez, incluso si cambia el uso de mayúsculas o minúsculas.
 - Un lanchero puede registrar varias embarcaciones; cada embarcación queda pendiente de verificación.
+- El panel admin puede registrar franjas de disponibilidad manuales, buscar embarcaciones activas y aprobadas por plazas, zona y hora, y publicar retornos vacíos para ofrecerlos manualmente.
+- Al registrar una calificación, el promedio público de la embarcación se actualiza y se guarda una notificación interna para el lanchero. El dueño puede consultarla con `GET /api/owners/notifications` y su token de acceso.
+
+Las operaciones administrativas están protegidas y requieren el token de administrador en el encabezado `Authorization: Bearer <token>`.
+
+#### Registrar disponibilidad de una embarcación
+
+```text
+POST /api/admin/availability
+```
+
+```json
+{
+  "boatId": "UUID-DE-LA-EMBARCACION",
+  "startsAt": "2026-03-20T13:00:00-03:00",
+  "endsAt": "2026-03-20T16:00:00-03:00"
+}
+```
+
+#### Buscar flota disponible
+
+```text
+GET /api/admin/fleet/search?minPassengers=5&zone=Primera%20Secci%C3%B3n&availableAt=2026-03-20T14%3A00%3A00-03%3A00
+```
+
+La respuesta incluye únicamente lanchas activas y aprobadas cuya capacidad libre
+cubre el mínimo solicitado y cuya franja registrada incluye el horario. El
+contacto del lanchero se entrega solo a administradores autenticados.
+
+#### Publicar y consultar retornos vacíos
+
+```text
+POST /api/admin/empty-legs
+```
+
+```json
+{
+  "boatId": "UUID-DE-LA-EMBARCACION",
+  "origin": "Primera Sección",
+  "destination": "Tigre",
+  "returnsAt": "2026-03-20T15:00:00-03:00"
+}
+```
+
+El panel permite consultar los registros mediante `GET /api/admin/empty-legs`
+y copiar el mensaje generado para compartirlo manualmente con la flota. No se
+envían notificaciones push ni se ejecutan subastas.
 
 La aplicación habilita `ValidationPipe` global con whitelist y rechazo de propiedades desconocidas. En el entorno local, PostgreSQL se publica en el puerto `5432`, que coincide con el puerto interno del contenedor.
 

@@ -31,6 +31,7 @@ services:
       - ./migrations/006_add_documented_passenger_capacity.sql:/migrations/006_add_documented_passenger_capacity.sql:ro
       - ./migrations/007_add_passenger_accounts.sql:/migrations/007_add_passenger_accounts.sql:ro
       - ./migrations/008_add_boat_bookings_and_feedback.sql:/migrations/008_add_boat_bookings_and_feedback.sql:ro
+      - ./migrations/009_add_admin_operations.sql:/migrations/009_add_admin_operations.sql:ro
     entrypoint: ["psql"]
     command:
       [
@@ -50,6 +51,8 @@ services:
         "/migrations/007_add_passenger_accounts.sql",
         "-f",
         "/migrations/008_add_boat_bookings_and_feedback.sql",
+        "-f",
+        "/migrations/009_add_admin_operations.sql",
       ]
     restart: "no"
 

@@ -12,6 +12,7 @@ import type { Owner } from '../owners/owner.entity.js';
 import type { BoatDocument } from './boat-document.entity.js';
 import type { BoatBooking } from '../passengers/boat-booking.entity.js';
 import type { BoatFeedback } from '../passengers/boat-feedback.entity.js';
+import type { BoatAvailabilityWindow } from '../admin/boat-availability.entity.js';
 
 export enum BoatStatus {
   ACTIVE = 'active',
@@ -105,6 +106,12 @@ export class Boat {
 
   @OneToMany('BoatFeedback', (feedback: BoatFeedback) => feedback.boat)
   feedback!: BoatFeedback[];
+
+  @OneToMany(
+    'BoatAvailabilityWindow',
+    (window: BoatAvailabilityWindow) => window.boat,
+  )
+  availabilityWindows!: BoatAvailabilityWindow[];
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;

@@ -81,7 +81,11 @@ export class BoatsService {
   async listAvailable(
     filters: SearchBoatsDto = {},
   ): Promise<
-    Array<Omit<Boat, 'owner'> & { owner: Pick<Owner, 'fullName'> }>
+    Array<
+      Omit<Boat, 'owner'> & {
+        owner: Pick<Owner, 'fullName'> & { whatsappUrl: string | null };
+      }
+    >
   > {
     const where: FindOptionsWhere<Boat> = {
       status: BoatStatus.ACTIVE,
@@ -125,11 +129,30 @@ export class BoatsService {
       const summary = summariesByBoat.get(owner.id);
       return {
         ...boat,
-        owner: { fullName: owner.fullName },
+        owner: {
+          fullName: owner.fullName,
+          whatsappUrl: this.whatsappUrl(
+            owner.phone,
+            boat.name,
+            boat.coverageZone,
+          ),
+        },
         averageRating: summary ? Number(summary.averageRating) : null,
         feedbackCount: summary ? Number(summary.feedbackCount) : 0,
       };
     });
+  }
+
+  private whatsappUrl(
+    phone: string | null,
+    boatName: string,
+    coverageZone: string,
+  ): string | null {
+    const number = phone?.replace(/\D/g, '');
+    if (!number || number.length < 8 || number.length > 15) return null;
+
+    const message = `Hola, quiero consultar la disponibilidad de la lancha ${boatName} en ${coverageZone}.`;
+    return `https://wa.me/${number}?text=${encodeURIComponent(message)}`;
   }
 
   async uploadImage(boatId: string, file: Express.Multer.File): Promise<Boat> {

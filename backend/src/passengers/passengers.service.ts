@@ -15,6 +15,7 @@ import { Boat, BoatStatus, VerificationStatus } from '../boats/boat.entity.js';
 import { Owner } from '../owners/owner.entity.js';
 import { BoatBooking } from './boat-booking.entity.js';
 import { BoatFeedback } from './boat-feedback.entity.js';
+import { OwnerNotification } from '../owners/owner-notification.entity.js';
 import { CreateFeedbackDto } from './dto/create-feedback.dto.js';
 import { RegisterPassengerDto } from './dto/register-passenger.dto.js';
 
@@ -27,8 +28,6 @@ export class PassengersService {
     private readonly usersRepository: Repository<Owner>,
     @InjectRepository(BoatBooking)
     private readonly bookingsRepository: Repository<BoatBooking>,
-    @InjectRepository(BoatFeedback)
-    private readonly feedbackRepository: Repository<BoatFeedback>,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -181,15 +180,32 @@ export class PassengersService {
     }
 
     try {
-      const feedback = this.feedbackRepository.create({
-        bookingId,
-        boatId: booking.boatId,
-        passengerId,
-        ownerId: booking.boat.ownerId,
-        rating: dto.rating,
-        comment: dto.comment?.trim() || null,
-      });
-      const savedFeedback = await this.feedbackRepository.save(feedback);
+      const savedFeedback = await this.dataSource.transaction(
+        async (manager) => {
+          const feedback = await manager.save(
+            BoatFeedback,
+            manager.create(BoatFeedback, {
+              bookingId,
+              boatId: booking.boatId,
+              passengerId,
+              ownerId: booking.boat.ownerId,
+              rating: dto.rating,
+              comment: dto.comment?.trim() || null,
+            }),
+          );
+          await manager.save(
+            OwnerNotification,
+            manager.create(OwnerNotification, {
+              ownerId: booking.boat.ownerId,
+              feedbackId: feedback.id,
+              message: `Recibiste una nueva calificación de ${feedback.rating}/5.`,
+              readAt: null,
+            }),
+          );
+          return feedback;
+        },
+      );
+
       return {
         id: savedFeedback.id,
         rating: savedFeedback.rating,
