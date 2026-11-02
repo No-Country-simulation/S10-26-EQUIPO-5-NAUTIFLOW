@@ -68,6 +68,33 @@ deben restablecerla por correo. No elimines el volumen de PostgreSQL.
 
 Se implementó soporte para subir archivos asociados a embarcaciones, tanto imagenes como PDFs.
 
+### Operaciones administrativas MVP
+
+El panel de administración permite registrar franjas de disponibilidad manuales
+para lanchas activas y aprobadas, buscar por plazas libres, zona y horario, y
+contactar al lanchero por WhatsApp. También permite publicar retornos vacíos,
+guardarlos para el dashboard y copiar un mensaje para compartir con la flota.
+Las calificaciones existentes siguen actualizando el promedio visible en el
+catálogo y generan una notificación interna en la cuenta del lanchero.
+
+El catálogo público (`GET /api/boats`) entrega para cada embarcación verificada
+un enlace `owner.whatsappUrl` de WhatsApp con una consulta de disponibilidad
+prellenada. El número se toma del teléfono registrado por el lanchero y no se
+devuelve como dato independiente; el enlace aparece solo cuando el teléfono tiene
+un formato utilizable. Es un enlace Click to Chat y no requiere credenciales de
+WhatsApp Business.
+
+Endpoints administrativos (requieren JWT de admin):
+
+- `GET /api/admin/boats/active`: lanchas activas y aprobadas con contacto.
+- `POST /api/admin/availability`: registra `boatId`, `startsAt` y `endsAt`.
+- `GET /api/admin/fleet/search?minPassengers=5&availableAt=2026-11-02T14:00:00-03:00&zone=Primera%20Seccion`: busca lanchas disponibles en ese horario.
+- `GET /api/admin/empty-legs`: lista los retornos publicados.
+- `POST /api/admin/empty-legs`: registra `boatId`, `origin`, `destination` y `returnsAt`.
+
+El servicio Docker aplica la migración `009_add_admin_operations.sql` también
+en bases existentes; no es necesario borrar el volumen de PostgreSQL.
+
 Tipos permitidos en la subida:
 
 - `image/jpeg`

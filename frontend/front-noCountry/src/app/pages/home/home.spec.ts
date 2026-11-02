@@ -121,6 +121,10 @@ describe('Home approval and owner registration', () => {
     home.registerOwner();
     home.registerOwner();
     expect(httpClient.post).toHaveBeenCalledTimes(1);
+    expect(httpClient.post).toHaveBeenCalledWith(
+      jasmine.stringMatching('/owners/register$'),
+      home.ownerForm.getRawValue(),
+    );
 
     ownerResponse.next({
       id: 'owner-id',
@@ -184,6 +188,7 @@ describe('Home approval and owner registration', () => {
   it('requests catalogue results with capacity, zone, and availability filters', () => {
     const fixture = TestBed.createComponent(Home);
     const home = fixture.componentInstance;
+    expect(boatsService.listAvailable).toHaveBeenCalledWith({});
     home.minPassengerCapacity = 6;
     home.coverageZoneFilter = ' Delta ';
     home.availabilityFilter = 'available';
@@ -195,6 +200,119 @@ describe('Home approval and owner registration', () => {
       zone: 'Delta',
       availability: 'available',
     });
+    fixture.destroy();
+  });
+
+  it('renders a WhatsApp availability link for a public boat', () => {
+    const fixture = TestBed.createComponent(Home);
+    const home = fixture.componentInstance;
+    home.filteredAvailableBoats = [
+      {
+        id: 'boat-id',
+        registrationNumber: 'ABC-123',
+        name: 'Estrella',
+        passengerCapacity: 8,
+        availablePassengerCapacity: 5,
+        coverageZone: 'Delta',
+        imageUrl: null,
+        imagePublicId: null,
+        verificationStatus: 'approved',
+        owner: {
+          fullName: 'Lanchero',
+          whatsappUrl:
+            'https://wa.me/5491123456789?text=Hola%2C%20quiero%20consultar',
+        },
+        averageRating: null,
+        feedbackCount: 0,
+      },
+    ];
+
+    fixture.detectChanges();
+
+    const link = fixture.nativeElement.querySelector(
+      'a[aria-label="Consultar disponibilidad de Estrella por WhatsApp"]',
+    ) as HTMLAnchorElement | null;
+    expect(link?.getAttribute('href')).toBe(
+      'https://wa.me/5491123456789?text=Hola%2C%20quiero%20consultar',
+    );
+    expect(link?.querySelector('svg')).not.toBeNull();
+    fixture.destroy();
+  });
+
+  it('searches the admin fleet using free seats, zone, and a future time', () => {
+    localStorage.setItem('nautiflow_access_token', 'admin-token');
+    const fixture = TestBed.createComponent(Home);
+    const home = fixture.componentInstance;
+    const requestedTime = new Date(Date.now() + 60 * 60 * 1000);
+    requestedTime.setSeconds(0, 0);
+    home.fleetSearchPassengers = 5;
+    home.fleetSearchZone = 'Primera Sección';
+    home.fleetAvailableAt = new Date(
+      requestedTime.getTime() - requestedTime.getTimezoneOffset() * 60_000,
+    )
+      .toISOString()
+      .slice(0, 16);
+
+    home.searchAdminFleet();
+
+    const [url, options] = httpClient.get.calls.mostRecent().args as [
+      string,
+      { params: { get: (name: string) => string | null } },
+    ];
+    expect(url).toContain('/admin/fleet/search');
+    expect(options.params.get('minPassengers')).toBe('5');
+    expect(options.params.get('availableAt')).toBe(
+      requestedTime.toISOString(),
+    );
+    expect(options.params.get('zone')).toBe('Primera Sección');
+    expect(home.hasSearchedFleet).toBeTrue();
+    fixture.destroy();
+  });
+
+  it('publishes an empty leg and prepares the WhatsApp message', () => {
+    localStorage.setItem('nautiflow_access_token', 'admin-token');
+    const returnsAt = new Date(Date.now() + 60 * 60 * 1000);
+    returnsAt.setSeconds(0, 0);
+    const localReturnsAt = new Date(
+      returnsAt.getTime() - returnsAt.getTimezoneOffset() * 60_000,
+    )
+      .toISOString()
+      .slice(0, 16);
+    httpClient.post.and.returnValue(
+      of({
+        id: 'leg-id',
+        origin: 'Primera Sección',
+        destination: 'Tigre',
+        returnsAt: returnsAt.toISOString(),
+        boat: {
+          id: 'boat-id',
+          name: 'Estrella',
+          owner: { fullName: 'Lanchero', phone: null },
+        },
+      }),
+    );
+    const fixture = TestBed.createComponent(Home);
+    const home = fixture.componentInstance;
+    home.emptyLegBoatId = 'boat-id';
+    home.emptyLegOrigin = 'Primera Sección';
+    home.emptyLegDestination = 'Tigre';
+    home.emptyLegReturnsAt = localReturnsAt;
+
+    home.publishEmptyLeg();
+
+    expect(httpClient.post).toHaveBeenCalledWith(
+      jasmine.stringMatching('/admin/empty-legs'),
+      jasmine.objectContaining({
+        boatId: 'boat-id',
+        origin: 'Primera Sección',
+        destination: 'Tigre',
+        returnsAt: returnsAt.toISOString(),
+      }),
+      jasmine.any(Object),
+    );
+    expect(home.emptyLegAnnouncement).toContain('Lancha Estrella vuelve vacía');
+    expect(home.emptyLegAnnouncement).toContain('¿Alguien necesita un rescate');
+    expect(home.operationsSuccess).toContain('Retorno vacío publicado');
     fixture.destroy();
   });
 });

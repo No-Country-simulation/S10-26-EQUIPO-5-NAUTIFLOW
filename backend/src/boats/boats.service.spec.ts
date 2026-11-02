@@ -34,7 +34,7 @@ describe('BoatsService', () => {
     );
   });
 
-  it('returns verified boat details and only the owner name', async () => {
+  it('returns verified boat details and a WhatsApp contact link without exposing the phone', async () => {
     boatsRepository.find.mockResolvedValue([
       {
         id: 'boat-id',
@@ -50,7 +50,7 @@ describe('BoatsService', () => {
           id: 'owner-id',
           fullName: 'Lanchero Ejemplo',
           email: 'owner@example.com',
-          phone: '123456789',
+          phone: '+54 9 11 1234 5678',
         },
       },
     ]);
@@ -76,7 +76,11 @@ describe('BoatsService', () => {
       name: 'La Estrella',
       passengerCapacity: 8,
       imageUrl: 'https://example.com/boat.jpg',
-      owner: { fullName: 'Lanchero Ejemplo' },
+      owner: {
+        fullName: 'Lanchero Ejemplo',
+        whatsappUrl:
+          'https://wa.me/5491112345678?text=Hola%2C%20quiero%20consultar%20la%20disponibilidad%20de%20la%20lancha%20La%20Estrella%20en%20Delta%20del%20Tigre.',
+      },
       averageRating: 4.5,
       feedbackCount: 2,
     });

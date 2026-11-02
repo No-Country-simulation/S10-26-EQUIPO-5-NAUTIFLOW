@@ -1,5 +1,9 @@
 import { CommonModule, isPlatformBrowser } from '@angular/common';
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import {
+  HttpClient,
+  HttpErrorResponse,
+  HttpParams,
+} from '@angular/common/http';
 import { Component, Inject, PLATFORM_ID } from '@angular/core';
 import {
   FormBuilder,
@@ -67,6 +71,39 @@ interface AdminBoat extends Boat {
   owner?: { fullName: string; email: string };
 }
 
+interface AdminFleetBoat {
+  id: string;
+  name: string;
+  registrationNumber: string;
+  passengerCapacity: number;
+  availablePassengerCapacity: number;
+  coverageZone: string;
+  owner: { fullName: string; phone: string | null };
+}
+
+interface FleetSearchResult extends AdminFleetBoat {
+  availabilityWindows: { startsAt: string; endsAt: string }[];
+}
+
+interface EmptyLeg {
+  id: string;
+  origin: string;
+  destination: string;
+  returnsAt: string;
+  boat: {
+    id: string;
+    name: string;
+    owner: { fullName: string; phone: string | null };
+  };
+}
+
+interface OwnerNotification {
+  id: string;
+  message: string;
+  readAt: string | null;
+  createdAt: string;
+}
+
 type DocumentType = 'license' | 'insurance' | 'criminalRecord';
 type OwnerForm = FormGroup<{
   fullName: FormControl<string>;
@@ -131,6 +168,27 @@ export class Home {
   verifyingBoatId: string | null = null;
   accountSuccess = '';
   adminOwners: { id: string; fullName: string; email: string }[] = [];
+  activeFleet: AdminFleetBoat[] = [];
+  fleetSearchResults: FleetSearchResult[] = [];
+  hasSearchedFleet = false;
+  emptyLegs: EmptyLeg[] = [];
+  ownerNotifications: OwnerNotification[] = [];
+  fleetSearchPassengers = 1;
+  fleetSearchZone = '';
+  fleetAvailableAt = '';
+  availabilityBoatId = '';
+  availabilityStartsAt = '';
+  availabilityEndsAt = '';
+  emptyLegBoatId = '';
+  emptyLegOrigin = '';
+  emptyLegDestination = '';
+  emptyLegReturnsAt = '';
+  emptyLegAnnouncement = '';
+  operationsError = '';
+  operationsSuccess = '';
+  isSearchingFleet = false;
+  isSavingAvailability = false;
+  isPublishingEmptyLeg = false;
   accountError = '';
   passengerSearch = '';
   minPassengerCapacity: number | null = null;
@@ -484,6 +542,11 @@ export class Home {
     this.passengerBookings = [];
     this.pendingBoats = [];
     this.adminOwners = [];
+    this.activeFleet = [];
+    this.fleetSearchResults = [];
+    this.emptyLegs = [];
+    this.ownerNotifications = [];
+    this.emptyLegAnnouncement = '';
   }
 
   filterAvailableBoats(): void {
@@ -630,6 +693,175 @@ export class Home {
     });
   }
 
+  searchAdminFleet(): void {
+    const token = this.getAccessToken();
+    const availableAt = new Date(this.fleetAvailableAt);
+    if (
+      !token ||
+      !Number.isInteger(this.fleetSearchPassengers) ||
+      this.fleetSearchPassengers < 1 ||
+      this.fleetSearchPassengers > 200 ||
+      !this.fleetAvailableAt ||
+      Number.isNaN(availableAt.getTime()) ||
+      availableAt <= new Date()
+    ) {
+      this.operationsError =
+        'Indica una cantidad de pasajeros válida y un horario futuro.';
+      return;
+    }
+
+    this.operationsError = '';
+    this.isSearchingFleet = true;
+    this.hasSearchedFleet = true;
+    let params = new HttpParams()
+      .set('minPassengers', this.fleetSearchPassengers)
+      .set('availableAt', availableAt.toISOString());
+    if (this.fleetSearchZone.trim()) {
+      params = params.set('zone', this.fleetSearchZone.trim());
+    }
+    this.http
+      .get<FleetSearchResult[]>(`${this.apiUrl}/admin/fleet/search`, {
+        headers: { Authorization: 'Bearer ' + token },
+        params,
+      })
+      .subscribe({
+        next: (boats) => {
+          this.fleetSearchResults = boats;
+          this.isSearchingFleet = false;
+        },
+        error: (error: HttpErrorResponse) => {
+          this.isSearchingFleet = false;
+          this.operationsError = this.messageFromError(error);
+        },
+      });
+  }
+
+  saveAvailabilityWindow(): void {
+    const startsAt = new Date(this.availabilityStartsAt);
+    const endsAt = new Date(this.availabilityEndsAt);
+    if (
+      !this.availabilityBoatId ||
+      Number.isNaN(startsAt.getTime()) ||
+      Number.isNaN(endsAt.getTime()) ||
+      startsAt <= new Date() ||
+      endsAt <= startsAt
+    ) {
+      this.operationsError =
+        'Elige una lancha y un rango de disponibilidad futuro válido.';
+      return;
+    }
+    const token = this.getAccessToken();
+    if (!token) {
+      this.operationsError = 'Inicia sesión como administrador.';
+      return;
+    }
+
+    this.operationsError = '';
+    this.operationsSuccess = '';
+    this.isSavingAvailability = true;
+    this.http
+      .post(
+        `${this.apiUrl}/admin/availability`,
+        {
+          boatId: this.availabilityBoatId,
+          startsAt: startsAt.toISOString(),
+          endsAt: endsAt.toISOString(),
+        },
+        { headers: { Authorization: 'Bearer ' + token } },
+      )
+      .subscribe({
+        next: () => {
+          this.isSavingAvailability = false;
+          this.operationsSuccess = 'Disponibilidad registrada.';
+          this.availabilityStartsAt = '';
+          this.availabilityEndsAt = '';
+        },
+        error: (error: HttpErrorResponse) => {
+          this.isSavingAvailability = false;
+          this.operationsError = this.messageFromError(error);
+        },
+      });
+  }
+
+  publishEmptyLeg(): void {
+    const returnsAt = new Date(this.emptyLegReturnsAt);
+    if (
+      !this.emptyLegBoatId ||
+      !this.emptyLegOrigin.trim() ||
+      !this.emptyLegDestination.trim() ||
+      Number.isNaN(returnsAt.getTime()) ||
+      returnsAt <= new Date()
+    ) {
+      this.operationsError =
+        'Completa la lancha, el trayecto y un horario de regreso futuro.';
+      return;
+    }
+    const token = this.getAccessToken();
+    if (!token) {
+      this.operationsError = 'Inicia sesión como administrador.';
+      return;
+    }
+
+    this.operationsError = '';
+    this.operationsSuccess = '';
+    this.isPublishingEmptyLeg = true;
+    this.http
+      .post<EmptyLeg>(
+        `${this.apiUrl}/admin/empty-legs`,
+        {
+          boatId: this.emptyLegBoatId,
+          origin: this.emptyLegOrigin.trim(),
+          destination: this.emptyLegDestination.trim(),
+          returnsAt: returnsAt.toISOString(),
+        },
+        { headers: { Authorization: 'Bearer ' + token } },
+      )
+      .subscribe({
+        next: (leg) => {
+          this.emptyLegAnnouncement = this.emptyLegMessage(leg);
+          this.emptyLegOrigin = '';
+          this.emptyLegDestination = '';
+          this.emptyLegReturnsAt = '';
+          this.operationsSuccess =
+            'Retorno vacío publicado y guardado en el panel.';
+          this.isPublishingEmptyLeg = false;
+          this.loadEmptyLegs();
+        },
+        error: (error: HttpErrorResponse) => {
+          this.isPublishingEmptyLeg = false;
+          this.operationsError = this.messageFromError(error);
+        },
+      });
+  }
+
+  async copyEmptyLegMessage(): Promise<void> {
+    if (!this.emptyLegAnnouncement || !navigator.clipboard) {
+      this.operationsError =
+        'No se pudo acceder al portapapeles. Copia el texto manualmente.';
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(this.emptyLegAnnouncement);
+      this.operationsSuccess = 'Mensaje copiado para compartir con la flota.';
+      this.operationsError = '';
+    } catch {
+      this.operationsError =
+        'No se pudo copiar el mensaje. Selecciona y copia el texto manualmente.';
+    }
+  }
+
+  whatsappNumber(phone: string | null): string {
+    return phone?.replace(/\D/g, '') ?? '';
+  }
+
+  private emptyLegMessage(leg: EmptyLeg): string {
+    const returnTime = new Intl.DateTimeFormat('es-AR', {
+      dateStyle: 'short',
+      timeStyle: 'short',
+    }).format(new Date(leg.returnsAt));
+    return `Lancha ${leg.boat.name} vuelve vacía desde la Zona ${leg.origin} hacia ${leg.destination} el ${returnTime}. ¿Alguien necesita un rescate o envío en ese trayecto?`;
+  }
+
   hasLicenseDocument(boat: AdminBoat): boolean {
     return Boolean(
       boat.documents?.some((document) => document.type === 'license'),
@@ -696,6 +928,15 @@ export class Home {
         next: (boats) => this.myBoats = boats,
         error: (error: HttpErrorResponse) => this.accountError = this.messageFromError(error),
       });
+      this.http
+        .get<OwnerNotification[]>(`${this.apiUrl}/owners/notifications`, {
+          headers: { Authorization: 'Bearer ' + token },
+        })
+        .subscribe({
+          next: (notifications) => (this.ownerNotifications = notifications),
+          error: (error: HttpErrorResponse) =>
+            (this.accountError = this.messageFromError(error)),
+        });
     } else if (this.userRole === 'admin') {
       this.loadAdminData();
     } else if (this.userRole === 'passenger') {
@@ -735,6 +976,25 @@ export class Home {
       next: (owners) => this.adminOwners = owners,
       error: (error: HttpErrorResponse) => this.accountError = this.messageFromError(error),
     });
+    this.http.get<AdminFleetBoat[]>(`${this.apiUrl}/admin/boats/active`, { headers }).subscribe({
+      next: (boats) => this.activeFleet = boats,
+      error: (error: HttpErrorResponse) => this.operationsError = this.messageFromError(error),
+    });
+    this.loadEmptyLegs();
+  }
+
+  private loadEmptyLegs(): void {
+    const token = this.getAccessToken();
+    if (!token) return;
+    this.http
+      .get<EmptyLeg[]>(`${this.apiUrl}/admin/empty-legs`, {
+        headers: { Authorization: 'Bearer ' + token },
+      })
+      .subscribe({
+        next: (legs) => (this.emptyLegs = legs),
+        error: (error: HttpErrorResponse) =>
+          (this.operationsError = this.messageFromError(error)),
+      });
   }
 
   private loadAvailableBoats(filters: BoatSearchFilters = {}): void {
