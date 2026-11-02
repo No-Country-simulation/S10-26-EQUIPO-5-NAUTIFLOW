@@ -9,6 +9,35 @@ describe('AdminService boat verification', () => {
   const findOne = vi.fn();
   const save = vi.fn((boat) => Promise.resolve(boat));
   const boatsRepository = { findOne, save };
+  const availabilityRepository = {
+    create: vi.fn((value) => value),
+    save: vi.fn((value) => Promise.resolve(value)),
+  };
+  const queryBuilder = {
+    andWhere: vi.fn(),
+    distinct: vi.fn(),
+    getMany: vi.fn(),
+    innerJoinAndSelect: vi.fn(),
+    where: vi.fn(),
+  };
+  for (const method of [
+    queryBuilder.andWhere,
+    queryBuilder.distinct,
+    queryBuilder.innerJoinAndSelect,
+    queryBuilder.where,
+  ]) {
+    method.mockReturnValue(queryBuilder);
+  }
+  const createQueryBuilder = vi.fn(() => queryBuilder);
+  Object.assign(boatsRepository, {
+    createQueryBuilder,
+    find: vi.fn(),
+  });
+  const emptyLegsRepository = {
+    create: vi.fn((value) => value),
+    find: vi.fn(),
+    save: vi.fn((value) => Promise.resolve(value)),
+  };
   const ownersRepository = {};
   const boatsService = { create: vi.fn() };
 
@@ -19,6 +48,8 @@ describe('AdminService boat verification', () => {
     service = new AdminService(
       ownersRepository as unknown as Repository<Owner>,
       boatsRepository as unknown as Repository<Boat>,
+      availabilityRepository as never,
+      emptyLegsRepository as never,
       boatsService as unknown as BoatsService,
     );
   });
@@ -124,5 +155,128 @@ describe('AdminService boat verification', () => {
       }),
     ).rejects.toThrow('ya fue revisada');
     expect(save).not.toHaveBeenCalled();
+  });
+
+  it('creates future availability windows only for active approved boats', async () => {
+    const boat = { id: 'boat-id' } as Boat;
+    findOne.mockResolvedValue(boat);
+    const startsAt = new Date(Date.now() + 60 * 60 * 1000);
+    const endsAt = new Date(startsAt.getTime() + 60 * 60 * 1000);
+
+    await service.createAvailabilityWindow({
+      boatId: 'boat-id',
+      startsAt: startsAt.toISOString(),
+      endsAt: endsAt.toISOString(),
+    });
+
+    expect(findOne).toHaveBeenCalledWith({
+      where: {
+        id: 'boat-id',
+        status: 'active',
+        verificationStatus: 'approved',
+      },
+      relations: { owner: true },
+    });
+    expect(availabilityRepository.create).toHaveBeenCalledWith({
+      boatId: 'boat-id',
+      startsAt,
+      endsAt,
+    });
+    expect(availabilityRepository.save).toHaveBeenCalledWith(
+      expect.objectContaining({ boatId: 'boat-id' }),
+    );
+  });
+
+  it('rejects invalid availability ranges before saving', async () => {
+    const startsAt = new Date(Date.now() + 60 * 60 * 1000);
+    const endsAt = new Date(startsAt.getTime() - 1);
+    await expect(
+      service.createAvailabilityWindow({
+        boatId: 'boat-id',
+        startsAt: startsAt.toISOString(),
+        endsAt: endsAt.toISOString(),
+      }),
+    ).rejects.toThrow('posterior');
+    expect(availabilityRepository.save).not.toHaveBeenCalled();
+  });
+
+  it('searches active boats with free seats and availability covering the requested time', async () => {
+    const availableAt = new Date(Date.now() + 60 * 60 * 1000);
+    const startsAt = new Date(availableAt.getTime() - 30 * 60 * 1000);
+    const endsAt = new Date(availableAt.getTime() + 30 * 60 * 1000);
+    const boat = {
+      id: 'boat-id',
+      name: 'Estrella',
+      registrationNumber: 'ABC-123',
+      passengerCapacity: 8,
+      availablePassengerCapacity: 5,
+      coverageZone: 'Primera Sección',
+      owner: { fullName: 'Lanchero', phone: '+54 9 11 1234 5678' },
+      availabilityWindows: [{ startsAt, endsAt }],
+    } as unknown as Boat;
+    queryBuilder.getMany.mockResolvedValue([boat]);
+
+    const result = await service.searchFleet({
+      minPassengers: 5,
+      availableAt: availableAt.toISOString(),
+      zone: 'Primera',
+    });
+
+    expect(createQueryBuilder).toHaveBeenCalledWith('boat');
+    expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+      'boat.availablePassengerCapacity >= :minPassengers',
+      { minPassengers: 5 },
+    );
+    expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+      'availability.startsAt <= :availableAt',
+      { availableAt },
+    );
+    expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+      'availability.endsAt > :availableAt',
+      { availableAt },
+    );
+    expect(result[0]).toMatchObject({
+      id: 'boat-id',
+      owner: { fullName: 'Lanchero', phone: '+54 9 11 1234 5678' },
+    });
+  });
+
+  it('publishes a return leg for an active approved boat and records its administrator', async () => {
+    const boat = {
+      id: 'boat-id',
+      name: 'Estrella',
+      owner: { fullName: 'Lanchero', phone: '123456789' },
+    } as unknown as Boat;
+    findOne.mockResolvedValue(boat);
+    const returnsAt = new Date(Date.now() + 60 * 60 * 1000);
+    emptyLegsRepository.save.mockImplementation((leg) =>
+      Promise.resolve({ id: 'leg-id', ...leg }),
+    );
+
+    const result = await service.createEmptyLeg(
+      {
+        boatId: 'boat-id',
+        origin: 'Primera Sección',
+        destination: 'Tigre',
+        returnsAt: returnsAt.toISOString(),
+      },
+      'admin-id',
+    );
+
+    expect(emptyLegsRepository.create).toHaveBeenCalledWith({
+      boatId: 'boat-id',
+      origin: 'Primera Sección',
+      destination: 'Tigre',
+      returnsAt,
+      createdBy: 'admin-id',
+    });
+    expect(result).toMatchObject({
+      id: 'leg-id',
+      boat: {
+        id: 'boat-id',
+        name: 'Estrella',
+        owner: { fullName: 'Lanchero', phone: '123456789' },
+      },
+    });
   });
 });
