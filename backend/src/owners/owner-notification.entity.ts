@@ -7,7 +7,7 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import type { Owner } from './owner.entity.js';
-import type { BoatFeedback } from '../passengers/boat-feedback.entity.js';
+import type { BoatFeedback } from '../reviews/boat-feedback.entity.js';
 
 @Entity('owner_notifications')
 export class OwnerNotification {

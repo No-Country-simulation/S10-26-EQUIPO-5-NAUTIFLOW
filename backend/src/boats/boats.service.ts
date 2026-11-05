@@ -22,7 +22,7 @@ import {
   BoatDocumentStatus,
   BoatDocumentType,
 } from './boat-document.entity.js';
-import { BoatFeedback } from '../passengers/boat-feedback.entity.js';
+import { BoatFeedback } from '../reviews/boat-feedback.entity.js';
 import {
   BoatAvailability,
   SearchBoatsDto,
@@ -111,22 +111,22 @@ export class BoatsService {
       }),
       this.feedbackRepository
         .createQueryBuilder('feedback')
-        .select('feedback.ownerId', 'ownerId')
+        .select('feedback.boatId', 'boatId')
         .addSelect('AVG(feedback.rating)', 'averageRating')
         .addSelect('COUNT(feedback.id)', 'feedbackCount')
-        .groupBy('feedback.ownerId')
+        .groupBy('feedback.boatId')
         .getRawMany<{
-          ownerId: string;
+          boatId: string;
           averageRating: string;
           feedbackCount: string;
         }>(),
     ]);
     const summariesByBoat = new Map(
-      feedbackSummaries.map((summary) => [summary.ownerId, summary]),
+      feedbackSummaries.map((summary) => [summary.boatId, summary]),
     );
 
     return boats.map(({ owner, ...boat }) => {
-      const summary = summariesByBoat.get(owner.id);
+      const summary = summariesByBoat.get(boat.id);
       return {
         ...boat,
         owner: {

@@ -4,6 +4,7 @@ import {
   isMainModule,
   writeResponseToNodeResponse,
 } from '@angular/ssr/node';
+import compression from 'compression';
 import express from 'express';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,6 +16,8 @@ const app = express();
 const angularApp = new AngularNodeAppEngine({
   allowedHosts: ['localhost', '127.0.0.1', 'frontend'],
 });
+
+app.use(compression());
 
 /**
  * Example Express Rest API endpoints can be defined here.
