@@ -1,4 +1,5 @@
 # Backend —
+
 **Propuesta técnica para el MVP de gestión de transporte fluvial**
 
 ## 1. Objetivo
@@ -21,6 +22,341 @@ La solución estará orientada a un MVP de cinco semanas, priorizando la segurid
 - **Docker Compose:** entorno local reproducible para PostgreSQL.
 - **Jest:** pruebas unitarias y de integración.
 - **pnpm:** gestión de dependencias.
+
+## Puesta en marcha local
+
+Desde PowerShell, ejecutar:
+
+```powershell
+cd C:\Users\Fede\Desktop\No-Country\backend
+Copy-Item .env.example .env
+# Editar .env y reemplazar JWT_SECRET por un valor aleatorio privado.
+docker compose up -d --build
+```
+
+El comando anterior inicia:
+
+| Servicio | URL                     |
+| -------- | ----------------------- |
+| Backend  | <http://localhost:3001> |
+| Adminer  | <http://localhost:8080> |
+
+En Adminer, ingresar con estos datos:
+
+- **Sistema:** PostgreSQL
+- **Servidor:** `postgres`
+- **Usuario:** `delta_user`
+- **Contraseña:** `delta_password`
+- **Base de datos:** `delta_db`
+
+Las migraciones iniciales se montan en PostgreSQL y se ejecutan automáticamente
+cuando se crea el volumen por primera vez. Como PostgreSQL no repite esos scripts
+en volúmenes existentes, el servicio `migrate-documents` aplica de forma segura
+las migraciones `005_add_boat_documents.sql` a `011_remove_passenger_flow.sql`
+antes de iniciar el backend. Son idempotentes y no requieren borrar el volumen
+ni los datos existentes.
+
+Para detener los contenedores:
+
+```powershell
+docker compose down
+```
+
+### Ejecución sin Docker
+
+Con PostgreSQL instalado y ejecutándose localmente, crear la base y aplicar las
+migraciones en orden:
+
+```powershell
+cd C:\Users\Fede\Desktop\No-Country\backend
+Copy-Item .env.example .env
+psql -U postgres -c "CREATE USER delta_user WITH PASSWORD 'delta_password';"
+psql -U postgres -c "CREATE DATABASE delta_db OWNER delta_user;"
+Get-ChildItem .\migrations\*.sql | Sort-Object Name | ForEach-Object {
+  Get-Content -Raw $_.FullName | psql -v ON_ERROR_STOP=1 -U delta_user -d delta_db
+}
+pnpm install
+pnpm start:dev
+```
+
+En `.env`, usar `FRONTEND_URL=http://localhost:4200` y completar las variables
+de Cloudinary para habilitar la carga de documentación.
+
+En otra terminal, iniciar Angular:
+
+```powershell
+cd C:\Users\Fede\Desktop\No-Country\frontend\front-noCountry
+npm install
+npm start
+```
+
+El frontend quedará en `http://localhost:4200` y el backend en
+`http://localhost:3001`.
+
+La API se puede verificar con `GET http://localhost:3001`.
+
+Para registrar un lanchero desde Postman:
+
+```text
+POST http://localhost:3001/api/owners/register
+Content-Type: application/json
+```
+
+```json
+{
+  "fullName": "Juan Perez",
+  "email": "juan.perez@gmail.com",
+  "password": "UnaClaveSegura123",
+  "phone": "1123456789"
+}
+```
+
+Usar el `id` de la respuesta como `ownerId` al crear una embarcación:
+
+```text
+POST http://localhost:3001/api/boats
+Content-Type: application/json
+```
+
+```json
+{
+  "ownerId": "uuid-devuelto-por-el-registro",
+  "registrationNumber": "NAU-001",
+  "name": "La Delfina",
+  "passengerCapacity": 8,
+  "coverageZone": "Delta de Tigre"
+}
+```
+
+### Cuerpos para Postman
+
+En todos los requests que envían datos, seleccionar `Body > raw > JSON` y
+agregar el header:
+
+```text
+Content-Type: application/json
+```
+
+#### Registrar un lanchero
+
+```text
+POST http://localhost:3001/api/owners/register
+```
+
+```json
+{
+  "fullName": "Juan Perez",
+  "email": "juan.perez@gmail.com",
+  "password": "UnaClaveSegura123",
+  "phone": "1123456789"
+}
+```
+
+La contraseña debe tener entre 12 y 128 caracteres. El endpoint devuelve el
+`id` del lanchero, que se utiliza como `ownerId` al crear una embarcación.
+
+#### Crear una embarcación
+
+```text
+POST http://localhost:3001/api/boats
+```
+
+```json
+{
+  "ownerId": "PEGAR-AQUI-EL-ID-DEL-LANCHERO",
+  "registrationNumber": "NAU-002",
+  "name": "La Delfina",
+  "passengerCapacity": 8,
+  "coverageZone": "Delta de Tigre"
+}
+```
+
+`passengerCapacity` debe ser un número entre 1 y 200. El `ownerId` debe ser
+un UUID existente en la tabla `users`.
+
+#### Solicitar recuperación de contraseña
+
+```text
+POST http://localhost:3001/api/owners/password/forgot
+```
+
+```json
+{
+  "email": "juan.perez@gmail.com"
+}
+```
+
+La respuesta es siempre un mensaje genérico para no revelar si el correo está
+registrado. Cuando `RESEND_API_KEY`, `MAIL_FROM` y `FRONTEND_URL` están
+configurados, el token se envía mediante un enlace al correo.
+
+#### Restablecer contraseña
+
+```text
+POST http://localhost:3001/api/owners/password/reset
+```
+
+```json
+{
+  "token": "TOKEN_RECIBIDO_EN_EL_ENLACE_DEL_EMAIL",
+  "password": "NuevaClaveSegura123"
+}
+```
+
+El token es el valor incluido en el enlace recibido por correo, no el
+`token_hash` almacenado en la base de datos. La nueva contraseña debe tener
+entre 12 y 128 caracteres.
+
+### Consultas para Adminer
+
+Abrir <http://localhost:8080> e ingresar con:
+
+- **Sistema:** `PostgreSQL`
+- **Servidor:** `postgres`
+- **Usuario:** `delta_user`
+- **Contraseña:** `delta_password`
+- **Base de datos:** `delta_db`
+
+Después de iniciar sesión, seleccionar la base `delta_db` y entrar en
+**SQL command**. Estas consultas sirven para inspeccionar los datos creados
+desde Postman.
+
+#### Ver tablas y columnas
+
+```sql
+SELECT table_name
+FROM information_schema.tables
+WHERE table_schema = 'public'
+ORDER BY table_name;
+```
+
+```sql
+SELECT table_name, column_name, data_type
+FROM information_schema.columns
+WHERE table_schema = 'public'
+ORDER BY table_name, ordinal_position;
+```
+
+#### Ver lancheros
+
+No se muestra `password_hash`, porque contiene credenciales almacenadas y no
+debe exponerse innecesariamente.
+
+```sql
+SELECT
+  id,
+  name AS full_name,
+  email,
+  phone,
+  role,
+  created_at
+FROM users
+ORDER BY created_at DESC;
+```
+
+#### Buscar el UUID de un lanchero
+
+```sql
+SELECT id, name AS full_name, email, phone
+FROM users
+WHERE email = 'juan.perez@gmail.com';
+```
+
+Copiar el valor de `id` de esta consulta para usarlo como `ownerId` en
+Postman.
+
+#### Ver embarcaciones con su propietario
+
+```sql
+SELECT
+  b.id,
+  b.registration_number,
+  b.name,
+  b.passenger_capacity,
+  b.coverage_zone,
+  b.status,
+  b.verification_status,
+  b.created_at,
+  u.id AS owner_id,
+  u.name AS owner_name,
+  u.email AS owner_email
+FROM boats AS b
+INNER JOIN users AS u ON u.id = b.owner_id
+ORDER BY b.created_at DESC;
+```
+
+#### Buscar una embarcación por matrícula
+
+```sql
+SELECT
+  b.registration_number,
+  b.name,
+  b.passenger_capacity,
+  b.coverage_zone,
+  b.status,
+  b.verification_status,
+  u.name AS owner_name,
+  u.email AS owner_email
+FROM boats AS b
+INNER JOIN users AS u ON u.id = b.owner_id
+WHERE b.registration_number = 'NAU-002';
+```
+
+#### Filtrar embarcaciones disponibles y aprobadas
+
+```sql
+SELECT
+  b.registration_number,
+  b.name,
+  b.passenger_capacity,
+  b.coverage_zone,
+  u.name AS owner_name,
+  u.phone AS owner_phone
+FROM boats AS b
+INNER JOIN users AS u ON u.id = b.owner_id
+WHERE b.status = 'active'
+  AND b.verification_status = 'approved'
+ORDER BY b.coverage_zone, b.name;
+```
+
+#### Desactivar una embarcación
+
+La aprobación debe realizarse desde el endpoint autenticado para que se
+comprueben la licencia y la capacidad declarada. No aprobar directamente desde
+Adminer, porque eso omite las reglas de verificación.
+
+```sql
+UPDATE boats
+SET status = 'inactive'
+WHERE registration_number = 'NAU-002';
+```
+
+Verificar el resultado:
+
+```sql
+SELECT registration_number, status, verification_status
+FROM boats
+WHERE registration_number = 'NAU-002';
+```
+
+#### Ver tokens de recuperación
+
+El `token_hash` no permite reconstruir el token que debe enviarse en Postman.
+Esta consulta solo sirve para comprobar que existe un token pendiente y cuándo
+vence:
+
+```sql
+SELECT
+  id,
+  owner_id,
+  expires_at,
+  created_at
+FROM password_reset_tokens
+ORDER BY created_at DESC;
+```
+
+No editar manualmente `password_hash` ni `token_hash`. El backend genera ambos
+valores de forma segura.
 
 ## 3. Arquitectura propuesta
 
@@ -62,12 +398,12 @@ La verificación será exclusivamente manual. No se integrarán APIs gubernament
 
 - Buscar embarcaciones por capacidad, zona, horario y estado de verificación.
 - Excluir de los resultados las embarcaciones inactivas o no aprobadas.
-- Registrar solicitudes y asignaciones manuales de viajes.
-- Gestionar los estados del viaje.
-- Registrar la finalización del servicio.
-- Evitar asignaciones incompatibles en horarios superpuestos.
+- Programar viajes asociados directamente a embarcaciones activas y aprobadas.
+- Crear viajes asociados a retornos vacíos publicados.
+- Permitir que turistas consulten las salidas y contacten al lanchero sin cuenta.
+- Registrar la finalización del servicio solo después de su horario.
 
-La selección y el contacto con el lanchero estarán a cargo del administrador. No se implementará asignación automática mediante GPS.
+La publicación y gestión de viajes corresponde al administrador. No se implementará asignación automática mediante GPS.
 
 ### 4.5. Reseñas y reputación
 
@@ -95,15 +431,15 @@ No se desarrollarán subastas en tiempo real, seguimiento GPS ni notificaciones 
 
 Se propone trabajar con las siguientes entidades principales:
 
-| Entidad | Responsabilidad |
-|---|---|
-| `User` | Usuarios, credenciales y roles. |
-| `BoatOwner` | Información del lanchero y sus datos de contacto. |
-| `Boat` | Embarcaciones, capacidad, zonas y estados. |
+| Entidad        | Responsabilidad                                    |
+| -------------- | -------------------------------------------------- |
+| `User`         | Usuarios, credenciales y roles.                    |
+| `BoatOwner`    | Información del lanchero y sus datos de contacto.  |
+| `Boat`         | Embarcaciones, capacidad, zonas y estados.         |
 | `BoatDocument` | Documentación, archivos y revisión administrativa. |
-| `Trip` | Solicitudes, asignaciones y ejecución de viajes. |
-| `Review` | Calificaciones y comentarios asociados a viajes. |
-| `EmptyLeg` | Registro de tramos de retorno vacíos. |
+| `Trip`         | Salidas programadas, finalización y enlaces de reseña. |
+| `Review`       | Calificaciones y comentarios asociados a viajes.   |
+| `EmptyLeg`     | Registro de tramos de retorno vacíos.              |
 
 El esquema definitivo, las cardinalidades y las restricciones se validarán antes de implementar las migraciones de base de datos.
 
@@ -134,23 +470,397 @@ Se definirán métodos HTTP, rutas, parámetros, DTO, respuestas, errores y requ
 
 Entre los endpoints previstos se encuentran:
 
-| Método | Endpoint propuesto | Función |
-|---|---|---|
-| POST | `/api/auth/login` | Iniciar sesión. |
-| POST | `/api/owners/register` | Registrar un lanchero. |
-| POST | `/api/boats` | Registrar una embarcación. |
-| POST | `/api/boats/:id/documents` | Cargar documentación. |
-| GET | `/api/admin/boats/pending` | Consultar embarcaciones pendientes. |
-| PATCH | `/api/admin/boats/:id/verification` | Aprobar o rechazar. |
-| GET | `/api/admin/boats/search` | Buscar embarcaciones. |
-| POST | `/api/admin/trips` | Registrar y asignar un viaje. |
-| PATCH | `/api/admin/trips/:id/complete` | Completar un viaje. |
-| POST | `/api/admin/trips/:id/review-link` | Generar un enlace de reseña. |
-| POST | `/api/public/reviews/:token` | Registrar una reseña. |
-| POST | `/api/admin/trips/:id/empty-leg` | Publicar un retorno vacío. |
-| GET | `/api/admin/empty-legs` | Consultar retornos disponibles. |
+| Método | Endpoint propuesto                  | Función                             |
+| ------ | ----------------------------------- | ----------------------------------- |
+| POST   | `/api/auth/login`                   | Iniciar sesión.                     |
+| POST   | `/api/owners/register`              | Registrar un lanchero.              |
+| POST   | `/api/boats`                        | Registrar una embarcación.          |
+| POST   | `/api/boats/:id/documents`          | Cargar documentación.               |
+| GET    | `/api/admin/boats/pending`          | Consultar embarcaciones pendientes. |
+| PATCH  | `/api/admin/boats/:id/verification` | Aprobar o rechazar.                 |
+| GET    | `/api/admin/fleet/search`            | Buscar flota por plazas, zona y horario. |
+| GET    | `/api/trips`                        | Consultar viajes públicos y retornos. |
+| GET    | `/api/admin/trips`                  | Listar viajes para administración.  |
+| POST   | `/api/admin/trips`                  | Programar un viaje para una lancha. |
+| POST   | `/api/admin/trips/:id/complete`     | Completar un viaje y emitir su enlace. |
+| GET    | `/api/reviews/:token`               | Validar enlace y consultar el viaje. |
+| POST   | `/api/reviews/:token`               | Registrar una reseña pública.       |
+| GET    | `/api/admin/empty-legs`             | Consultar retornos disponibles.     |
+| POST   | `/api/admin/empty-legs`              | Publicar manualmente un retorno vacío. |
+| GET    | `/api/owners/notifications`           | Consultar notificaciones del lanchero autenticado. |
 
-Las rutas definitivas se acordarán con el equipo de frontend y se ajustarán durante la implementación.
+Los turistas no tienen cuentas, inicio de sesión ni reservas. Las reseñas se
+envían exclusivamente desde un enlace de un solo uso, emitido al completar el
+viaje y válido durante 30 días.
+
+### Endpoints implementados
+
+El primer flujo implementado incluye:
+
+- `POST /api/owners/register`: recibe `fullName`, `email` y `phone`; todos son obligatorios y el email no puede repetirse.
+- `POST /api/boats`: recibe `ownerId`, `registrationNumber`, `name`, `passengerCapacity` y `coverageZone`.
+- La capacidad declarada debe ser un entero entre 1 y 200.
+- Una matrícula se normaliza a mayúsculas y no puede registrarse más de una vez, incluso si cambia el uso de mayúsculas o minúsculas.
+- Un lanchero puede registrar varias embarcaciones; cada embarcación queda pendiente de verificación.
+- El panel admin puede registrar franjas de disponibilidad, buscar embarcaciones activas y aprobadas, programar viajes y publicar retornos vacíos; estos últimos generan automáticamente un viaje público.
+- Al registrar una calificación, el promedio público de la embarcación se actualiza y se guarda una notificación interna para el lanchero. El dueño puede consultarla con `GET /api/owners/notifications` y su token de acceso.
+
+Las operaciones administrativas están protegidas y requieren el token de administrador en el encabezado `Authorization: Bearer <token>`.
+
+#### Registrar disponibilidad de una embarcación
+
+```text
+POST /api/admin/availability
+```
+
+```json
+{
+  "boatId": "UUID-DE-LA-EMBARCACION",
+  "startsAt": "2026-03-20T13:00:00-03:00",
+  "endsAt": "2026-03-20T16:00:00-03:00"
+}
+```
+
+#### Buscar flota disponible
+
+```text
+GET /api/admin/fleet/search?minPassengers=5&zone=Primera%20Secci%C3%B3n&availableAt=2026-03-20T14%3A00%3A00-03%3A00
+```
+
+La respuesta incluye únicamente lanchas activas y aprobadas cuya capacidad libre
+cubre el mínimo solicitado y cuya franja registrada incluye el horario. El
+contacto del lanchero se entrega solo a administradores autenticados.
+
+#### Publicar y consultar retornos vacíos
+
+```text
+POST /api/admin/empty-legs
+```
+
+```json
+{
+  "boatId": "UUID-DE-LA-EMBARCACION",
+  "origin": "Primera Sección",
+  "destination": "Tigre",
+  "returnsAt": "2026-03-20T15:00:00-03:00"
+}
+```
+
+El panel permite consultar los registros mediante `GET /api/admin/empty-legs`
+y copiar el mensaje generado para compartirlo manualmente con la flota. No se
+envían notificaciones push ni se ejecutan subastas.
+
+## Logs de solicitudes HTTP
+
+El backend registra el inicio y la finalización de cada solicitud, incluidos
+los errores y las solicitudes interrumpidas. Las entradas estructuradas incluyen
+un identificador `requestId`, método, ruta, código de respuesta y duración en
+milisegundos. La respuesta incluye el mismo identificador en `X-Request-Id`
+para facilitar el seguimiento. Por seguridad, los logs no incluyen cuerpos,
+encabezados de autenticación ni parámetros de consulta.
+
+#### Programar y completar un viaje (solo admin)
+
+Programar el viaje para una embarcación activa y aprobada:
+
+```text
+GET http://localhost:3001/api/admin/trips
+Authorization: Bearer <token-de-admin>
+```
+
+La lista administrativa muestra los viajes programados y sus embarcaciones.
+
+Crear el viaje:
+
+```text
+POST http://localhost:3001/api/admin/trips
+Authorization: Bearer TOKEN_ADMIN
+Content-Type: application/json
+```
+
+```json
+{
+  "boatId": "UUID-DE-LA-EMBARCACION-APROBADA",
+  "origin": "Tigre",
+  "destination": "Primera Sección",
+  "startsAt": "2026-11-20T14:00:00-03:00",
+  "endsAt": "2026-11-20T15:30:00-03:00"
+}
+```
+
+La lancha debe estar activa y aprobada. El viaje aparece en el catálogo público
+y los turistas coordinan directamente con el lanchero, sin cuentas ni reservas.
+Después de su horario, completar el viaje con `POST
+/api/admin/trips/:id/complete`; esto emite un enlace de reseña de un solo uso,
+válido durante 30 días. Publicar un retorno mediante `POST
+/api/admin/empty-legs` también crea su viaje público asociado.
+
+La aplicación habilita `ValidationPipe` global con whitelist y rechazo de propiedades desconocidas. En el entorno local, PostgreSQL se publica en el puerto `5432`, que coincide con el puerto interno del contenedor.
+
+## Panel administrativo: lancheros y embarcaciones
+
+El alta de la cuenta del lanchero sigue siendo su propio registro en
+`POST /api/owners/register`. El administrador puede consultar las cuentas ya
+registradas, dar de alta embarcaciones vinculadas a esos lancheros y revisar la
+verificación de cada embarcación. Las nuevas embarcaciones quedan pendientes
+hasta que un administrador las apruebe.
+
+### Crear tres administradores
+
+Estos pasos son para un entorno de desarrollo o pruebas, no para producción.
+Cada integrante que levante el proyecto en su propia computadora tendrá una base local independiente y debe crear allí sus cuentas. Si el equipo necesita compartir los mismos datos, primero debe disponer de un backend y una base de datos de pruebas compartidos; crear cuentas en una base local no las crea en ese servidor.
+
+Se necesita Docker en ejecución, Node.js con npm y `pnpm`. Si `pnpm` no está instalado, instalarlo con `npm install --global pnpm`.
+
+#### 1. Iniciar la aplicación
+
+Desde la carpeta raíz del repositorio, crear `backend/.env` a partir del ejemplo, si todavía no existe:
+
+Windows (PowerShell):
+
+```powershell
+if (!(Test-Path backend\.env)) { Copy-Item backend\.env.example backend\.env }
+```
+
+macOS o Linux:
+
+```bash
+test -f backend/.env || cp backend/.env.example backend/.env
+```
+
+Iniciar PostgreSQL y la aplicación desde la raíz del repositorio:
+
+```bash
+docker compose up -d --build
+```
+
+Esperar a que Docker termine de iniciar los servicios. La web queda en
+`http://localhost:4000` y la API en `http://localhost:3001`.
+
+#### 2. Preparar las cuentas admin
+
+En una terminal, cambiar a la carpeta `backend` desde la raíz del repositorio:
+
+Windows (PowerShell):
+
+```powershell
+Set-Location .\backend
+```
+
+macOS o Linux:
+
+```bash
+cd backend
+```
+
+Instalar las dependencias del backend si es la primera vez en esa computadora:
+
+```bash
+pnpm install
+```
+
+Crear `admin-seed.json` en la carpeta `backend`. El archivo está excluido de Git. Completarlo con tres personas, correos distintos y contraseñas únicas de al menos 12 caracteres:
+
+```json
+[
+  {
+    "name": "Admin Uno",
+    "email": "admin1@tu-dominio.com",
+    "phone": "1111111111",
+    "password": "REEMPLAZAR_POR_UNA_CLAVE_UNICA"
+  },
+  {
+    "name": "Admin Dos",
+    "email": "admin2@tu-dominio.com",
+    "phone": "2222222222",
+    "password": "REEMPLAZAR_POR_OTRA_CLAVE_UNICA"
+  },
+  {
+    "name": "Admin Tres",
+    "email": "admin3@tu-dominio.com",
+    "phone": "3333333333",
+    "password": "REEMPLAZAR_POR_OTRA_CLAVE_UNICA"
+  }
+]
+```
+
+No reutilizar contraseñas de otros servicios ni enviar el archivo por el chat
+del equipo. Cada integrante debe usar credenciales propias para su base local.
+
+#### 3. Crear las cuentas
+
+Con Docker ejecutándose y la terminal situada en `backend`, ejecutar:
+
+Windows (PowerShell):
+
+```powershell
+$env:ALLOW_ADMIN_SEED = "true"
+pnpm seed:admins
+Remove-Item Env:\ALLOW_ADMIN_SEED
+```
+
+macOS o Linux:
+
+```bash
+ALLOW_ADMIN_SEED=true pnpm seed:admins
+```
+
+El script crea las tres cuentas dentro de una transacción, genera hashes compatibles con el login y no imprime las contraseñas. Requiere la base de datos local configurada en `backend/.env`, se niega a ejecutarse cuando `NODE_ENV=production` y no crea cuentas en un servidor remoto salvo que sus variables de conexión apunten explícitamente a ese entorno de pruebas.
+
+Si aparece un error indicando que un correo ya existe, el script revierte la operación completa. Usar tres correos nuevos o iniciar sesión con las cuentas que ya existen; no borrar el volumen de Docker para resolver este error. Después de probar, se puede borrar `admin-seed.json`; nunca subirlo a Git.
+
+#### 4. Iniciar sesión en la web
+
+1. Abrir `http://localhost:4000`.
+2. Elegir **Iniciar sesión** y seleccionar **Administrador**.
+3. Ingresar el correo y la contraseña definidos para una de las cuentas del
+   archivo local `admin-seed.json`.
+
+El backend entrega el token de acceso al iniciar sesión; no hay que generarlo
+ni copiarlo manualmente. El token dura una hora. Si la sesión vence, volver a
+iniciar sesión.
+
+#### 5. Probar tareas administrativas
+
+- **Revisión:** revisar la tabla de embarcaciones pendientes y abrir los
+  documentos enviados por el lanchero. Completar la capacidad según la licencia
+  y elegir **Aprobar** o **Rechazar**. Solo las lanchas aprobadas quedan
+  disponibles para las operaciones de flota.
+- **Usuarios:** consultar y buscar lancheros y administradores registrados.
+- **Disponibilidad y búsqueda:** registrar una franja horaria para una lancha
+  aprobada y luego buscar flota por cantidad de pasajeros, zona y horario.
+- **Retornos vacíos:** publicar un tramo de regreso y consultarlo en el panel
+  para ofrecerlo manualmente.
+- **Viajes y reseñas:** programar un viaje con una lancha aprobada; cuando haya
+  finalizado, marcarlo como completado y copiar el enlace de reseña generado.
+
+Para probar la revisión desde cero, primero registrar un lanchero en la web y
+crear una embarcación con su cuenta. Luego subir la documentación y volver al
+panel de administrador para revisarla.
+
+#### Acceso con Postman
+
+También se puede iniciar sesión desde Postman con `POST
+http://localhost:3001/api/auth/login` y este body:
+
+```json
+{
+  "email": "admin1@tu-dominio.com",
+  "password": "LA_CLAVE_CONFIGURADA_EN_EL_ARCHIVO_LOCAL"
+}
+```
+
+Enviar el `accessToken` devuelto en el encabezado
+`Authorization: Bearer <accessToken>` para llamar a endpoints administrativos.
+No compartir ese token: representa la sesión de administrador y vence en una
+hora.
+
+#### Problemas frecuentes
+
+- **“Email o contraseña incorrectos”:** comprobar que se eligió el rol
+  **Administrador**, que las credenciales coinciden con el archivo local y que
+  el seed se ejecutó correctamente contra la base de datos que está usando el
+  backend.
+- **“El token es inválido o venció”:** volver a iniciar sesión. Si el problema
+  continúa, verificar que frontend y backend sean del mismo entorno; un token
+  de otro servidor no sirve.
+- **No puedo entrar desde la computadora de otro compañero:** `localhost`
+  apunta a la propia computadora. Para compartir el panel, todos deben usar la
+  URL del mismo entorno de pruebas desplegado, con las cuentas creadas allí.
+
+No ejecutar el seed en producción ni publicar archivos `.env`,
+`admin-seed.json`, contraseñas o tokens.
+
+Enviar el `accessToken` de la respuesta en `Authorization: Bearer <token>` al
+usar directamente los endpoints administrativos.
+
+### Operaciones disponibles
+
+| Método | Endpoint                            | Uso                                                             |
+| ------ | ----------------------------------- | --------------------------------------------------------------- |
+| GET    | `/api/admin/owners`                 | Listar lancheros registrados, sin incluir hashes de contraseña. |
+| GET    | `/api/admin/users`                  | Listar administradores y lancheros sin credenciales. |
+| POST   | `/api/admin/boats`                  | Dar de alta una embarcación asociada a un `ownerId` existente.  |
+| GET    | `/api/admin/boats/pending`          | Listar embarcaciones pendientes junto con su propietario.       |
+| PATCH  | `/api/admin/boats/:id/verification` | Aprobar o rechazar y guardar quién tomó la decisión y cuándo.   |
+
+Para dar de alta una embarcación, enviar el mismo cuerpo que a
+`POST /api/boats`, junto con el token administrativo:
+
+```json
+{
+  "ownerId": "UUID-DE-UN-LANCHERO-REGISTRADO",
+  "registrationNumber": "NAU-003",
+  "name": "La Delfina",
+  "passengerCapacity": 8,
+  "coverageZone": "Delta de Tigre"
+}
+```
+
+Aprobar:
+
+```json
+{
+  "status": "approved",
+  "documentedPassengerCapacity": 8
+}
+```
+
+Antes de aprobar, el administrador debe abrir y revisar la licencia presentada
+e ingresar la capacidad que figura en ella. La API exige que exista una licencia
+y toma la capacidad indicada en ella como valor definitivo, actualizando tanto
+la capacidad total como las plazas disponibles de la embarcación. Solo se puede
+decidir una vez sobre cada embarcación pendiente.
+
+Rechazar requiere un motivo:
+
+```json
+{
+  "status": "rejected",
+  "reason": "La documentación presentada está vencida."
+}
+```
+
+La migración `002_add_boat_verification_audit.sql` agrega el administrador
+responsable, el motivo y la fecha de revisión. Si la base ya existía, aplicarla
+una sola vez antes de usar los nuevos endpoints.
+
+## Recuperación de contraseña
+
+1. En Resend, revocar cualquier clave que se haya compartido en un chat y
+   generar una nueva. Verificar el dominio remitente en Resend antes de usarlo.
+2. Guardar la nueva clave solo en `backend/.env` como `RESEND_API_KEY`; completar
+   `MAIL_FROM` con un remitente verificado y `FRONTEND_URL` con la URL del
+   frontend (`http://localhost:4200` en desarrollo local o `http://localhost:4000`
+   con Docker). No incluir la clave en Angular, en Git ni en capturas.
+3. El usuario abre el modal **Iniciar sesión > ¿Olvidaste tu contraseña?** e
+   ingresa su correo. El endpoint `POST /api/owners/password/forgot` devuelve
+   un texto genérico, exista o no la cuenta. Para una cuenta existente, genera
+   un token impredecible, guarda solo su hash y envía el enlace con Resend.
+4. El enlace vence a los 30 minutos. Un segundo pedido invalida el anterior.
+   `POST /api/owners/password/reset` valida el vencimiento y consume el token
+   en la misma transacción que cambia la contraseña; no puede usarse de nuevo.
+5. Si el enlace venció o ya se usó, el formulario lo rechaza y ofrece solicitar
+   otro. La contraseña nueva debe tener entre 12 y 128 caracteres.
+
+El registro requiere correo y acepta únicamente `@gmail.com`, `@hotmail.com`
+o `@outlook.com`;
+el servidor repite la validación para que no pueda eludirse desde otro cliente.
+El hash de la contraseña se deriva con `scrypt` y nunca se devuelve en la
+respuesta. Las migraciones iniciales incluyen la tabla de tokens de recuperación.
+
+## Reglas operativas recomendadas
+
+El diagrama define entidades y relaciones, pero no todas las reglas operativas. Para el MVP recomiendo:
+
+- El lanchero puede marcar su embarcación inactiva; solo el administrador puede reactivarla o cambiar la verificación. Una embarcación inactiva conserva sus viajes ya asignados: no se cancelan en silencio, y el administrador los revisa/reasigna.
+- Una modificación de matrícula, capacidad, seguro o cobertura queda como solicitud pendiente. El administrador la acepta o rechaza antes de aplicarla; si afecta seguridad o elegibilidad, la embarcación vuelve a pendiente de revisión.
+- La búsqueda excluye embarcaciones inactivas, no aprobadas o con viaje que se solape con el horario solicitado. La asignación de un viaje a una embarcación inactiva/no aprobada o que incumpla el intervalo mínimo entre viajes se bloquea en backend.
+- Un retorno vacío publicado crea un viaje que aparece en el catálogo público; el turista coordina directamente con el lanchero y no reserva ni ocupa plazas en el sistema.
+- Al completar un viaje se genera un enlace de reseña único y vencible. El administrador lo comparte manualmente con el turista. Al abrir WhatsApp se prepara un mensaje con origen, destino, fecha/hora, capacidad disponible y contacto; una persona confirma el envío. El teléfono no se publica en listados abiertos.
+- Las solicitudes de modificación deben aparecer en una cola administrativa con aviso en el dashboard; al resolverlas, el lanchero recibe el resultado en su panel y por correo.
+
+Las reglas de finalización y reseñas se aplican en backend; las recomendaciones restantes deben validarse con producto antes de ampliar el alcance.
 
 ## 8. Plan de trabajo — 5 semanas
 

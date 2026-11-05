@@ -7,16 +7,95 @@ services:
     environment:
       POSTGRES_DB: delta_db
       POSTGRES_USER: delta_user
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-delta_password}
     ports:
-      - "5432:5433"
+      - "5432:5432"
     volumes:
       - delta_postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U delta_user -d delta_db"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U delta_user -d delta_db"]
       interval: 5s
       timeout: 5s
       retries: 5
+
+  migrate-documents:
+    image: postgres:16-alpine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${DB_PASSWORD:-delta_password}
+    volumes:
+      - ./migrations/005_add_boat_documents.sql:/migrations/005_add_boat_documents.sql:ro
+      - ./migrations/006_add_documented_passenger_capacity.sql:/migrations/006_add_documented_passenger_capacity.sql:ro
+      - ./migrations/007_add_passenger_accounts.sql:/migrations/007_add_passenger_accounts.sql:ro
+      - ./migrations/008_add_boat_bookings_and_feedback.sql:/migrations/008_add_boat_bookings_and_feedback.sql:ro
+      - ./migrations/009_add_admin_operations.sql:/migrations/009_add_admin_operations.sql:ro
+      - ./migrations/010_add_trips.sql:/migrations/010_add_trips.sql:ro
+      - ./migrations/011_remove_passenger_flow.sql:/migrations/011_remove_passenger_flow.sql:ro
+    entrypoint: ["psql"]
+    command:
+      [
+        "-h",
+        "postgres",
+        "-U",
+        "delta_user",
+        "-d",
+        "delta_db",
+        "-v",
+        "ON_ERROR_STOP=1",
+        "-f",
+        "/migrations/005_add_boat_documents.sql",
+        "-f",
+        "/migrations/006_add_documented_passenger_capacity.sql",
+        "-f",
+        "/migrations/007_add_passenger_accounts.sql",
+        "-f",
+        "/migrations/008_add_boat_bookings_and_feedback.sql",
+        "-f",
+        "/migrations/009_add_admin_operations.sql",
+        "-f",
+        "/migrations/010_add_trips.sql",
+        "-f",
+        "/migrations/011_remove_passenger_flow.sql",
+      ]
+    restart: "no"
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: delta-backend
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate-documents:
+        condition: service_completed_successfully
+    environment:
+      PORT: 3001
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: delta_user
+      DB_PASSWORD: ${DB_PASSWORD:-delta_password}
+      DB_DATABASE: delta_db
+    ports:
+      - "3001:3001"
+
+  adminer:
+    image: adminer:4
+    container_name: delta-adminer
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    ports:
+      - "8080:8080"
 
 volumes:
   delta_postgres_data:

@@ -1,0 +1,84 @@
+import { isPlatformBrowser } from '@angular/common';
+import { Injectable, inject, PLATFORM_ID } from '@angular/core';
+import { HttpClient, HttpParams } from '@angular/common/http';
+import { Observable } from 'rxjs';
+
+export interface Boat {
+  id: string;
+  registrationNumber: string;
+  name: string;
+  passengerCapacity: number;
+  availablePassengerCapacity: number;
+  coverageZone: string;
+  imageUrl: string | null;
+  imagePublicId: string | null;
+  verificationStatus: string;
+  owner?: { fullName: string; whatsappUrl?: string | null };
+  documents?: BoatDocument[];
+  averageRating: number | null;
+  feedbackCount: number;
+}
+
+export interface BoatDocument {
+  id: string;
+  type: 'license' | 'insurance' | 'criminalRecord';
+  fileUrl: string;
+  originalName: string;
+  verificationStatus: string;
+}
+
+export interface BoatSearchFilters {
+  minCapacity?: number;
+  zone?: string;
+  availability?: 'available' | 'unavailable';
+}
+
+@Injectable({
+  providedIn: 'root',
+})
+export class BoatsService {
+  private readonly http = inject(HttpClient);
+  private readonly platformId = inject(PLATFORM_ID);
+  private readonly apiUrl = this.createApiUrl();
+
+  private createApiUrl(): string {
+    const backendUrl = isPlatformBrowser(this.platformId)
+      ? `${window.location.protocol}//${window.location.hostname}:3001`
+      : 'http://backend:3001';
+    return `${backendUrl}/api/boats`;
+  }
+
+  uploadImage(boatId: string, file: File): Observable<Boat> {
+    const formData = new FormData();
+    formData.append('image', file);
+
+    return this.http.post<Boat>(`${this.apiUrl}/${boatId}/image`, formData);
+  }
+
+  uploadDocuments(boatId: string, documents: FormData): Observable<BoatDocument[]> {
+    return this.http.post<BoatDocument[]>(
+      `${this.apiUrl}/${boatId}/documents`,
+      documents,
+    );
+  }
+
+  listMine(token: string): Observable<Boat[]> {
+    return this.http.get<Boat[]>(`${this.apiUrl}/mine`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  }
+
+  listAvailable(filters: BoatSearchFilters = {}): Observable<Boat[]> {
+    let params = new HttpParams();
+    if (filters.minCapacity !== undefined) {
+      params = params.set('minCapacity', filters.minCapacity);
+    }
+    if (filters.zone?.trim()) {
+      params = params.set('zone', filters.zone.trim());
+    }
+    if (filters.availability) {
+      params = params.set('availability', filters.availability);
+    }
+    return this.http.get<Boat[]>(this.apiUrl, { params });
+  }
+}
