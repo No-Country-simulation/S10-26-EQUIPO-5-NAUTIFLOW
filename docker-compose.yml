@@ -13,7 +13,7 @@ services:
       - nautiflow_postgres_data:/var/lib/postgresql/data
       - ./backend/migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U delta_user -d delta_db"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U delta_user -d delta_db"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -31,6 +31,8 @@ services:
       - ./backend/migrations/007_add_passenger_accounts.sql:/migrations/007_add_passenger_accounts.sql:ro
       - ./backend/migrations/008_add_boat_bookings_and_feedback.sql:/migrations/008_add_boat_bookings_and_feedback.sql:ro
       - ./backend/migrations/009_add_admin_operations.sql:/migrations/009_add_admin_operations.sql:ro
+      - ./backend/migrations/010_add_trips.sql:/migrations/010_add_trips.sql:ro
+      - ./backend/migrations/011_remove_passenger_flow.sql:/migrations/011_remove_passenger_flow.sql:ro
     entrypoint: ["psql"]
     command:
       [
@@ -52,6 +54,10 @@ services:
         "/migrations/008_add_boat_bookings_and_feedback.sql",
         "-f",
         "/migrations/009_add_admin_operations.sql",
+        "-f",
+        "/migrations/010_add_trips.sql",
+        "-f",
+        "/migrations/011_remove_passenger_flow.sql",
       ]
     restart: "no"
 
