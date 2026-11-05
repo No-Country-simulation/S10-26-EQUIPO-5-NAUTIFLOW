@@ -4,12 +4,19 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import {
+  DataSource,
+  In,
+  LessThanOrEqual,
+  MoreThan,
+  Repository,
+} from 'typeorm';
 import { Boat, BoatStatus, VerificationStatus } from '../boats/boat.entity.js';
 import { BoatDocumentType } from '../boats/boat-document.entity.js';
 import { BoatsService } from '../boats/boats.service.js';
 import { CreateBoatDto } from '../boats/dto/create-boat.dto.js';
 import { Owner } from '../owners/owner.entity.js';
+import { Trip } from '../trips/trip.entity.js';
 import { BoatAvailabilityWindow } from './boat-availability.entity.js';
 import { EmptyLeg } from './empty-leg.entity.js';
 import { CreateAvailabilityWindowDto } from './dto/create-availability-window.dto.js';
@@ -29,10 +36,27 @@ export class AdminService {
     @InjectRepository(EmptyLeg)
     private readonly emptyLegsRepository: Repository<EmptyLeg>,
     private readonly boatsService: BoatsService,
+    private readonly dataSource: DataSource,
   ) {}
 
   listOwners() {
     return this.ownersRepository.find({
+      where: { role: 'owner' },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        phone: true,
+        role: true,
+        createdAt: true,
+      },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  listUsers() {
+    return this.ownersRepository.find({
+      where: { role: In(['admin', 'owner']) },
       select: {
         id: true,
         fullName: true,
@@ -54,12 +78,13 @@ export class AdminService {
   }
 
   async listActiveBoats() {
+    const now = new Date();
     const boats = await this.boatsRepository.find({
       where: {
         status: BoatStatus.ACTIVE,
         verificationStatus: VerificationStatus.APPROVED,
       },
-      relations: { owner: true },
+      relations: { owner: true, availabilityWindows: true },
       order: { name: 'ASC' },
     });
     return boats.map((boat) => ({
@@ -73,6 +98,12 @@ export class AdminService {
         fullName: boat.owner.fullName,
         phone: boat.owner.phone,
       },
+      availabilityWindows: (boat.availabilityWindows ?? [])
+        .filter((window) => window.endsAt > now)
+        .map((window) => ({
+          startsAt: window.startsAt,
+          endsAt: window.endsAt,
+        })),
     }));
   }
 
@@ -206,20 +237,51 @@ export class AdminService {
       );
     }
 
-    const leg = this.emptyLegsRepository.create({
-      boatId: boat.id,
-      origin: dto.origin.trim(),
-      destination: dto.destination.trim(),
-      returnsAt,
-      createdBy: adminId,
+    const availability = await this.availabilityRepository.findOne({
+      where: {
+        boatId: boat.id,
+        startsAt: LessThanOrEqual(returnsAt),
+        endsAt: MoreThan(returnsAt),
+      },
     });
-    const savedLeg = await this.emptyLegsRepository.save(leg);
+    if (!availability) {
+      throw new BadRequestException(
+        'La lancha no tiene disponibilidad guardada para el horario del retorno',
+      );
+    }
+
+    const { savedLeg, trip } = await this.dataSource.transaction(
+      async (manager) => {
+        const leg = manager.create(EmptyLeg, {
+          boatId: boat.id,
+          origin: dto.origin.trim(),
+          destination: dto.destination.trim(),
+          returnsAt,
+          createdBy: adminId,
+        });
+        const savedLeg = await manager.save(EmptyLeg, leg);
+        const trip = await manager.save(
+          Trip,
+          manager.create(Trip, {
+            boatId: boat.id,
+            emptyLegId: savedLeg.id,
+            origin: savedLeg.origin,
+            destination: savedLeg.destination,
+            startsAt: savedLeg.returnsAt,
+            endsAt: null,
+            createdBy: adminId,
+          }),
+        );
+        return { savedLeg, trip };
+      },
+    );
     return {
       id: savedLeg.id,
       origin: savedLeg.origin,
       destination: savedLeg.destination,
       returnsAt: savedLeg.returnsAt,
       createdAt: savedLeg.createdAt,
+      tripId: trip.id,
       boat: {
         id: boat.id,
         name: boat.name,

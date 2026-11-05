@@ -8,7 +8,6 @@ import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { JWT_ALGORITHM, JWT_ISSUER } from './jwt.constants.js';
 import { OwnerAuthGuard } from './owner-auth.guard.js';
-import { PassengerAuthGuard } from './passenger-auth.guard.js';
 
 @Module({
   imports: [
@@ -36,7 +35,7 @@ import { PassengerAuthGuard } from './passenger-auth.guard.js';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, AdminAuthGuard, OwnerAuthGuard, PassengerAuthGuard],
-  exports: [AdminAuthGuard, OwnerAuthGuard, PassengerAuthGuard, JwtModule],
+  providers: [AuthService, AdminAuthGuard, OwnerAuthGuard],
+  exports: [AdminAuthGuard, OwnerAuthGuard, JwtModule],
 })
 export class AuthModule {}

@@ -1,7 +1,7 @@
 import { Repository } from 'typeorm';
 import { Owner } from '../owners/owner.entity.js';
 import { CloudinaryService } from '../cloudinary/cloudinary.service.js';
-import { BoatFeedback } from '../passengers/boat-feedback.entity.js';
+import { BoatFeedback } from '../reviews/boat-feedback.entity.js';
 import { BoatDocument } from './boat-document.entity.js';
 import { Boat, BoatStatus, VerificationStatus } from './boat.entity.js';
 import { BoatAvailability } from './dto/search-boats.dto.js';
@@ -55,7 +55,7 @@ describe('BoatsService', () => {
       },
     ]);
     getRawMany.mockResolvedValue([
-      { ownerId: 'owner-id', averageRating: '4.5', feedbackCount: '2' },
+      { boatId: 'boat-id', averageRating: '4.5', feedbackCount: '2' },
     ]);
 
     const result = await service.listAvailable();
@@ -69,8 +69,8 @@ describe('BoatsService', () => {
       order: { createdAt: 'DESC' },
     });
     expect(queryBuilder.select).toHaveBeenCalledWith(
-      'feedback.ownerId',
-      'ownerId',
+      'feedback.boatId',
+      'boatId',
     );
     expect(result[0]).toMatchObject({
       name: 'La Estrella',

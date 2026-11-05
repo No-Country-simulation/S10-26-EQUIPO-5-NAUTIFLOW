@@ -7,15 +7,13 @@ import { BoatsController } from './boats.controller.js';
 import { BoatsService } from './boats.service.js';
 import { CloudinaryModule } from '../cloudinary/cloudinary.module.js';
 import { AuthModule } from '../auth/auth.module.js';
-import { BoatBooking } from '../passengers/boat-booking.entity.js';
-import { BoatFeedback } from '../passengers/boat-feedback.entity.js';
+import { BoatFeedback } from '../reviews/boat-feedback.entity.js';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
       Boat,
       BoatDocument,
-      BoatBooking,
       BoatFeedback,
       Owner,
     ]),

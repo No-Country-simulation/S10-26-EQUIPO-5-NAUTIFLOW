@@ -3,7 +3,9 @@ import { Repository } from 'typeorm';
 import { Boat, VerificationStatus } from '../boats/boat.entity.js';
 import { BoatsService } from '../boats/boats.service.js';
 import { Owner } from '../owners/owner.entity.js';
+import { Trip } from '../trips/trip.entity.js';
 import { AdminService } from './admin.service.js';
+import { EmptyLeg } from './empty-leg.entity.js';
 
 describe('AdminService boat verification', () => {
   const findOne = vi.fn();
@@ -11,6 +13,7 @@ describe('AdminService boat verification', () => {
   const boatsRepository = { findOne, save };
   const availabilityRepository = {
     create: vi.fn((value) => value),
+    findOne: vi.fn(),
     save: vi.fn((value) => Promise.resolve(value)),
   };
   const queryBuilder = {
@@ -38,8 +41,22 @@ describe('AdminService boat verification', () => {
     find: vi.fn(),
     save: vi.fn((value) => Promise.resolve(value)),
   };
-  const ownersRepository = {};
+  const findUsers = vi.fn();
+  const ownersRepository = { find: findUsers };
   const boatsService = { create: vi.fn() };
+  const transactionManager = {
+    create: vi.fn((_entity, value) => value),
+    save: vi.fn((entity, value) =>
+      Promise.resolve(
+        entity === EmptyLeg
+          ? { id: 'leg-id', ...value }
+          : { id: 'trip-id', ...value },
+      ),
+    ),
+  };
+  const dataSource = {
+    transaction: vi.fn((work) => work(transactionManager as never)),
+  };
 
   let service: AdminService;
 
@@ -51,6 +68,41 @@ describe('AdminService boat verification', () => {
       availabilityRepository as never,
       emptyLegsRepository as never,
       boatsService as unknown as BoatsService,
+      dataSource as never,
+    );
+  });
+
+  it('lists only owner accounts in the legacy owners endpoint', async () => {
+    findUsers.mockResolvedValue([]);
+
+    await service.listOwners();
+
+    expect(findUsers).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { role: 'owner' } }),
+    );
+  });
+
+  it('lists administrator and owner accounts without sensitive fields', async () => {
+    findUsers.mockResolvedValue([]);
+
+    await service.listUsers();
+
+    expect(findUsers).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { role: expect.anything() },
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          phone: true,
+          role: true,
+          createdAt: true,
+        },
+        order: { createdAt: 'DESC' },
+      }),
+    );
+    expect(findUsers.mock.calls.at(-1)?.[0].where.role).toEqual(
+      expect.objectContaining({ value: ['admin', 'owner'] }),
     );
   });
 
@@ -248,11 +300,10 @@ describe('AdminService boat verification', () => {
       owner: { fullName: 'Lanchero', phone: '123456789' },
     } as unknown as Boat;
     findOne.mockResolvedValue(boat);
+    availabilityRepository.findOne.mockResolvedValue({
+      boatId: boat.id,
+    });
     const returnsAt = new Date(Date.now() + 60 * 60 * 1000);
-    emptyLegsRepository.save.mockImplementation((leg) =>
-      Promise.resolve({ id: 'leg-id', ...leg }),
-    );
-
     const result = await service.createEmptyLeg(
       {
         boatId: 'boat-id',
@@ -263,20 +314,64 @@ describe('AdminService boat verification', () => {
       'admin-id',
     );
 
-    expect(emptyLegsRepository.create).toHaveBeenCalledWith({
+    expect(transactionManager.create).toHaveBeenCalledWith(EmptyLeg, {
       boatId: 'boat-id',
       origin: 'Primera Sección',
       destination: 'Tigre',
       returnsAt,
       createdBy: 'admin-id',
     });
+    const availabilityQuery = availabilityRepository.findOne.mock.calls[0][0];
+    expect(availabilityQuery.where).toMatchObject({
+      boatId: boat.id,
+      startsAt: expect.objectContaining({
+        _type: 'lessThanOrEqual',
+        _value: returnsAt,
+      }),
+      endsAt: expect.objectContaining({
+        _type: 'moreThan',
+        _value: returnsAt,
+      }),
+    });
+    expect(transactionManager.save).toHaveBeenCalledWith(
+      Trip,
+      expect.objectContaining({
+        boatId: 'boat-id',
+        emptyLegId: 'leg-id',
+        startsAt: returnsAt,
+        createdBy: 'admin-id',
+      }),
+    );
     expect(result).toMatchObject({
       id: 'leg-id',
+      tripId: 'trip-id',
       boat: {
         id: 'boat-id',
         name: 'Estrella',
         owner: { fullName: 'Lanchero', phone: '123456789' },
       },
     });
+  });
+
+  it('requires saved availability before publishing a return leg', async () => {
+    findOne.mockResolvedValue({
+      id: 'boat-id',
+      name: 'Estrella',
+      owner: { fullName: 'Lanchero', phone: null },
+    } as unknown as Boat);
+    availabilityRepository.findOne.mockResolvedValue(null);
+
+    await expect(
+      service.createEmptyLeg(
+        {
+          boatId: 'boat-id',
+          origin: 'Primera Sección',
+          destination: 'Tigre',
+          returnsAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        },
+        'admin-id',
+      ),
+    ).rejects.toThrow('disponibilidad guardada');
+    expect(dataSource.transaction).not.toHaveBeenCalled();
   });
 });

@@ -5,7 +5,7 @@
 Desde la raíz del repositorio:
 
 ```bash
-docker compose up --build
+docker compose up -d --build
 ```
 
 La aplicación quedará disponible en:
@@ -15,7 +15,8 @@ La aplicación quedará disponible en:
 - PostgreSQL: localhost:5432
 
 Al iniciar, Docker Compose espera a PostgreSQL y aplica las migraciones de
-documentos y capacidad declarada incluso si la base ya existía. No hace falta
+documentos, capacidad declarada, operaciones administrativas y viajes incluso
+si la base ya existía. No hace falta
 borrar el volumen de PostgreSQL para corregir el error
 `relation "boat_documents" does not exist`.
 
@@ -24,6 +25,26 @@ Para detener los servicios:
 ```bash
 docker compose down
 ```
+
+### Probar y usar el panel de administración
+
+Cada integrante puede probar el sistema en su propia computadora siguiendo los
+pasos de [creación de administradores y acceso al panel](./backend/README.md#crear-tres-administradores).
+La guía incluye comandos para Windows, macOS y Linux.
+
+En una prueba local, cada integrante tiene su propia base de datos y debe crear sus cuentas admin localmente; no se comparten automáticamente usuarios ni datos
+entre computadoras. Para que todos trabajen con los mismos datos, el equipo
+necesita un backend y una base de datos compartidos, y las cuentas deben crearse
+en ese entorno de pruebas.
+
+Después de iniciar sesión en la web como **Administrador**, podrán revisar
+lancheros y embarcaciones pendientes, inspeccionar documentos, aprobar o
+rechazar embarcaciones, consultar usuarios, registrar disponibilidad y buscar
+la flota, publicar retornos vacíos y gestionar viajes. Al completar un viaje,
+el sistema genera un enlace de reseña para compartir.
+
+No uses `docker compose down -v` para detener el entorno: también elimina la
+base de datos local y las cuentas de prueba.
 
 Para eliminar también los datos persistidos de PostgreSQL:
 
@@ -264,7 +285,19 @@ Body JSON:
 GET /api/admin/owners
 ```
 
-Requiere JWT válido de un usuario con rol `admin`.
+Lista únicamente las cuentas de lancheros. Requiere JWT válido de un usuario
+con rol `admin`.
+
+### Usuarios registrados por tipo (solo admin)
+
+```http
+GET /api/admin/users
+Authorization: Bearer <accessToken>
+```
+
+No requiere body. Devuelve las cuentas de administradores y lancheros, con `id`, `fullName`,
+`email`, `phone`, `role` y `createdAt`. Nunca
+incluye credenciales ni hashes de contraseña.
 
 ---
 
@@ -324,6 +357,167 @@ Valores válidos para `status`:
 
 - `approved`
 - `rejected`
+
+### Otros endpoints disponibles
+
+Los endpoints de lectura no reciben body. Salvo registro y login, las rutas
+marcadas como autenticadas requieren `Authorization: Bearer <token>`.
+
+#### Salud de la API
+
+```http
+GET /
+```
+
+#### Autenticación de administrador y lanchero
+
+```http
+POST /api/auth/login
+POST /api/auth/owner-login
+```
+
+Ambos reciben el mismo body:
+
+```json
+{
+  "email": "usuario@ejemplo.com",
+  "password": "PasswordSegura123"
+}
+```
+
+Usar `login` para administradores y `owner-login` para lancheros.
+
+#### Consultar mis embarcaciones (lanchero autenticado)
+
+```http
+GET /api/boats/mine
+```
+
+#### Cargar documentos de una embarcación
+
+```http
+POST /api/boats/:id/documents
+```
+
+Body `form-data` (archivo, máximo 5 MB por campo):
+
+```text
+license: [licencia.pdf]
+insurance: [seguro.pdf]
+criminalRecord: [antecedentes.pdf]
+```
+
+Los campos son opcionales individualmente; se aceptan PDF, JPG y PNG.
+
+#### Consultar viajes y enviar una reseña (público)
+
+Los turistas no crean cuentas, no inician sesión y no reservan dentro de la
+plataforma. Pueden consultar los viajes y contactar directamente al lanchero:
+
+```http
+GET /api/trips
+```
+
+Al completar el viaje, el sistema emite un enlace de reseña de un solo uso,
+válido durante 30 días. Abrirlo para consultar el viaje y enviar la calificación:
+
+```http
+GET /api/reviews/:token
+POST /api/reviews/:token
+```
+
+El envío recibe `rating` (entero de 1 a 5) y un `comment` opcional.
+
+#### Consultar notificaciones del lanchero autenticado
+
+```http
+GET /api/owners/notifications
+```
+
+#### Operaciones administrativas
+
+Las siguientes rutas requieren un token Bearer de administrador:
+
+```http
+GET /api/admin/owners
+GET /api/admin/users
+GET /api/admin/boats/pending
+GET /api/admin/boats/active
+GET /api/admin/empty-legs
+```
+
+Registrar una franja horaria:
+
+```http
+POST /api/admin/availability
+```
+
+```json
+{
+  "boatId": "UUID-DE-LA-EMBARCACION",
+  "startsAt": "2026-11-20T13:00:00-03:00",
+  "endsAt": "2026-11-20T16:00:00-03:00"
+}
+```
+
+Buscar la flota disponible (sin body; filtros por query string):
+
+```http
+GET /api/admin/fleet/search?minPassengers=5&availableAt=2026-11-20T14%3A00%3A00-03%3A00&zone=Delta
+```
+
+Publicar un retorno vacío:
+
+```http
+POST /api/admin/empty-legs
+```
+
+```json
+{
+  "boatId": "UUID-DE-LA-EMBARCACION",
+  "origin": "Primera Sección",
+  "destination": "Tigre",
+  "returnsAt": "2026-11-20T15:00:00-03:00"
+}
+```
+
+Programar un viaje (solo admin):
+
+```http
+POST /api/admin/trips
+```
+
+```json
+{
+  "boatId": "UUID-DE-LA-EMBARCACION-APROBADA",
+  "origin": "Tigre",
+  "destination": "Primera Sección",
+  "startsAt": "2026-11-20T14:00:00-03:00",
+  "endsAt": "2026-11-20T15:30:00-03:00"
+}
+```
+
+La lancha debe estar activa y aprobada; `startsAt` debe ser futuro y `endsAt`
+posterior. El viaje aparece en el catálogo público y los turistas coordinan
+directamente con el lanchero.
+
+Listar viajes desde el panel y completar uno cuando haya terminado:
+
+```http
+GET /api/admin/trips
+POST /api/admin/trips/:id/complete
+```
+
+Completar un viaje también genera el enlace de reseña. Publicar un retorno
+vacío con `POST /api/admin/empty-legs` genera su viaje público asociado.
+
+Verificar una embarcación pendiente:
+
+```http
+PATCH /api/admin/boats/:id/verification
+```
+
+El body de aprobación o rechazo se muestra en el endpoint 11.
 
 ## Crear tres admins
 

@@ -1,10 +1,10 @@
 // Runtime validation coverage for boat approval and owner registration progression.
 import { FormBuilder } from '@angular/forms';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { PLATFORM_ID } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
+import { fakeAsync, TestBed, tick } from '@angular/core/testing';
 import { ActivatedRoute } from '@angular/router';
-import { of, Subject } from 'rxjs';
+import { of, Subject, throwError } from 'rxjs';
 import { BoatsService } from '../../core/services/boat.service';
 import { Home } from './home';
 
@@ -15,9 +15,11 @@ describe('Home approval and owner registration', () => {
     patch: jasmine.Spy;
   };
   let boatsService: jasmine.SpyObj<BoatsService>;
+  let routeQuery: Record<string, string>;
 
   beforeEach(async () => {
     localStorage.clear();
+    routeQuery = {};
     httpClient = {
       get: jasmine.createSpy('get').and.returnValue(of([])),
       post: jasmine.createSpy('post').and.returnValue(of({})),
@@ -39,7 +41,13 @@ describe('Home approval and owner registration', () => {
         { provide: BoatsService, useValue: boatsService },
         {
           provide: ActivatedRoute,
-          useValue: { snapshot: { queryParamMap: { get: () => null } } },
+          useValue: {
+            snapshot: {
+              queryParamMap: {
+                get: (key: string) => routeQuery[key] ?? null,
+              },
+            },
+          },
         },
         { provide: PLATFORM_ID, useValue: 'browser' },
       ],
@@ -47,6 +55,172 @@ describe('Home approval and owner registration', () => {
   });
 
   afterEach(() => localStorage.clear());
+
+  it('loads admin data immediately and dismisses login feedback within five seconds', fakeAsync(() => {
+    const pendingBoatsResponse = new Subject<unknown>();
+    const adminUsersResponse = new Subject<unknown>();
+    const pendingBoats = [
+      {
+        id: 'boat-id',
+        registrationNumber: 'ABC-123',
+        name: 'Estrella',
+        passengerCapacity: 8,
+        availablePassengerCapacity: 8,
+        coverageZone: 'Delta',
+        imageUrl: null,
+        imagePublicId: null,
+        verificationStatus: 'pending',
+        averageRating: null,
+        feedbackCount: 0,
+      },
+    ];
+    httpClient.post.and.returnValue(
+      of({
+        accessToken: 'admin-token',
+        admin: {
+          id: 'admin-id',
+          fullName: 'Admin Example',
+          email: 'admin@example.com',
+        },
+      }),
+    );
+    httpClient.get.and.callFake((url: string) =>
+      url.endsWith('/admin/boats/pending')
+        ? pendingBoatsResponse.asObservable()
+        : url.endsWith('/admin/users')
+          ? adminUsersResponse.asObservable()
+          : of([]),
+    );
+
+    const fixture = TestBed.createComponent(Home);
+    const home = fixture.componentInstance;
+    home.loginRole = 'admin';
+    home.loginForm.setValue({
+      email: 'admin@example.com',
+      password: 'SecurePassword123',
+    });
+
+    home.login();
+
+    expect(httpClient.get).toHaveBeenCalledTimes(6);
+    expect(home.authSuccessMessage).toBe('Inicio de sesión exitoso.');
+    expect(home.currentUser?.id).toBe('admin-id');
+    expect(home.isLoadingAdminUsers).toBeTrue();
+    adminUsersResponse.next([
+      {
+        id: 'owner-id',
+        fullName: 'Lanchero Example',
+        email: 'owner@example.com',
+        phone: '+54 11 1234 5678',
+        role: 'owner',
+        createdAt: '2026-04-11T12:00:00.000Z',
+      },
+    ]);
+    expect(home.filteredAdminOwners).toHaveSize(1);
+    expect(home.authSuccessMessage).toBe('Inicio de sesión exitoso.');
+    tick(4999);
+    expect(home.authSuccessMessage).toBe('Inicio de sesión exitoso.');
+    tick(1);
+    expect(home.authSuccessMessage).toBe('');
+    pendingBoatsResponse.next(pendingBoats);
+    expect(home.pendingBoats).toEqual(pendingBoats);
+    fixture.destroy();
+  }));
+
+  it('clears login credentials when the selected account type changes', () => {
+    const fixture = TestBed.createComponent(Home);
+    const home = fixture.componentInstance;
+    home.loginForm.setValue({
+      email: 'owner@example.com',
+      password: 'SecurePassword123',
+    });
+    home.loginForm.markAllAsTouched();
+
+    home.selectLoginRole('admin');
+
+    expect(home.loginForm.getRawValue()).toEqual({ email: '', password: '' });
+    expect(home.loginForm.pristine).toBeTrue();
+    expect(home.loginForm.untouched).toBeTrue();
+    fixture.destroy();
+  });
+
+  it('shows a frontend-owned login error instead of the backend token message', () => {
+    httpClient.post.and.returnValue(
+      throwError(
+        () =>
+          new HttpErrorResponse({
+            status: 401,
+            error: { message: 'El token es inválido o venció' },
+          }),
+      ),
+    );
+    const fixture = TestBed.createComponent(Home);
+    const home = fixture.componentInstance;
+    home.loginForm.setValue({
+      email: 'admin@example.com',
+      password: 'SecurePassword123',
+    });
+
+    home.login();
+
+    expect(home.loginError).toBe('El correo o la contraseña no son correctos.');
+    expect(home.loginError).not.toContain('token');
+    fixture.destroy();
+  });
+
+  it('shows a clear message when the login request cannot reach the backend', () => {
+    httpClient.post.and.returnValue(
+      throwError(
+        () =>
+          new HttpErrorResponse({
+            status: 0,
+            error: new TypeError('Failed to fetch'),
+          }),
+      ),
+    );
+    const fixture = TestBed.createComponent(Home);
+    const home = fixture.componentInstance;
+    home.loginForm.setValue({
+      email: 'admin@example.com',
+      password: 'SecurePassword123',
+    });
+
+    home.login();
+
+    expect(home.loginError).toBe(
+      'No se pudo conectar con el backend. Verifica que el servidor esté iniciado e inténtalo nuevamente.',
+    );
+    fixture.destroy();
+  });
+
+  it('filters registered accounts by role and name, email, or phone', () => {
+    const fixture = TestBed.createComponent(Home);
+    const home = fixture.componentInstance;
+    home.adminUsers = [
+      {
+        id: 'admin-id',
+        fullName: 'Admin Example',
+        email: 'admin@example.com',
+        phone: null,
+        role: 'admin',
+        createdAt: '2026-04-11T12:00:00.000Z',
+      },
+      {
+        id: 'owner-id',
+        fullName: 'Lanchero Example',
+        email: 'owner@example.com',
+        phone: '+54 11 1234 5678',
+        role: 'owner',
+        createdAt: '2026-04-11T12:00:00.000Z',
+      },
+    ];
+
+    home.adminUserSearch = '1234';
+
+    expect(home.filteredAdminAdmins).toEqual([]);
+    expect(home.filteredAdminOwners.map((user) => user.id)).toEqual(['owner-id']);
+    fixture.destroy();
+  });
 
   it('sends only one request when approval is clicked repeatedly', () => {
     const approvalResponse = new Subject<unknown>();
@@ -182,6 +356,10 @@ describe('Home approval and owner registration', () => {
     expect(home.currentStep).toBe(4);
     expect(home.documentsSuccess).toContain('cargados exitosamente');
     expect(home.registeredBoat?.documents?.[0].originalName).toBe('license.pdf');
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain(
+      'Archivos cargados exitosamente. Quedaron pendientes de revisión.',
+    );
     fixture.destroy();
   });
 
@@ -200,6 +378,81 @@ describe('Home approval and owner registration', () => {
       zone: 'Delta',
       availability: 'available',
     });
+    fixture.destroy();
+  });
+
+  it('keeps the public trip list in a loading state until the automatic request finishes', async () => {
+    const publicTripsResponse = new Subject<unknown>();
+    httpClient.get.and.callFake((url: string) =>
+      url.endsWith('/trips') ? publicTripsResponse.asObservable() : of([]),
+    );
+
+    const fixture = TestBed.createComponent(Home);
+    const home = fixture.componentInstance;
+
+    expect(home.isLoadingPublicTrips).toBeTrue();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain(
+      'Cargando viajes publicados...',
+    );
+    expect(fixture.nativeElement.textContent).not.toContain(
+      'Todavía no hay viajes publicados.',
+    );
+    publicTripsResponse.next([]);
+    expect(home.isLoadingPublicTrips).toBeFalse();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain(
+      'Todavía no hay viajes publicados.',
+    );
+    fixture.destroy();
+  });
+
+  it('refreshes the saved availability list immediately after registration', () => {
+    localStorage.setItem('nautiflow_access_token', 'admin-token');
+    const startsAt = new Date(Date.now() + 60 * 60 * 1000);
+    const endsAt = new Date(startsAt.getTime() + 60 * 60 * 1000);
+    const availableBoat = {
+      id: 'boat-id',
+      name: 'Estrella',
+      registrationNumber: 'ABC-123',
+      passengerCapacity: 8,
+      availablePassengerCapacity: 8,
+      coverageZone: 'Delta',
+      owner: { fullName: 'Lanchero', phone: null },
+      availabilityWindows: [{
+        startsAt: startsAt.toISOString(),
+        endsAt: endsAt.toISOString(),
+      }],
+    };
+    httpClient.get.and.callFake((url: string) =>
+      url.endsWith('/admin/boats/active') ? of([availableBoat]) : of([]),
+    );
+    httpClient.post.and.returnValue(of({}));
+
+    const fixture = TestBed.createComponent(Home);
+    const home = fixture.componentInstance;
+    home.availabilityBoatId = 'boat-id';
+    home.availabilityStartsAt = new Date(
+      startsAt.getTime() - startsAt.getTimezoneOffset() * 60_000,
+    )
+      .toISOString()
+      .slice(0, 16);
+    home.availabilityEndsAt = new Date(
+      endsAt.getTime() - endsAt.getTimezoneOffset() * 60_000,
+    )
+      .toISOString()
+      .slice(0, 16);
+
+    home.saveAvailabilityWindow();
+
+    expect(httpClient.get).toHaveBeenCalledWith(
+      jasmine.stringMatching('/admin/boats/active$'),
+      jasmine.any(Object),
+    );
+    expect(home.tripBoatsWithAvailability.map((boat) => boat.id)).toEqual([
+      'boat-id',
+    ]);
     fixture.destroy();
   });
 
@@ -269,6 +522,82 @@ describe('Home approval and owner registration', () => {
     fixture.destroy();
   });
 
+  it('creates a trip for an approved boat from the admin panel', () => {
+    const trip = { id: 'trip-id', boat: { id: 'boat-id', name: 'Estrella' } };
+    const formatDateTimeLocal = (date: Date): string => {
+      const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+      return localDate.toISOString().slice(0, 16);
+    };
+    httpClient.post.and.returnValue(of(trip));
+    localStorage.setItem('nautiflow_access_token', 'admin-token');
+
+    const fixture = TestBed.createComponent(Home);
+    const home = fixture.componentInstance;
+    home.userRole = 'admin';
+    home.activeFleet = [{
+      id: 'boat-id',
+      name: 'Estrella',
+      registrationNumber: 'ABC-123',
+      passengerCapacity: 8,
+      availablePassengerCapacity: 8,
+      coverageZone: 'Delta',
+      owner: { fullName: 'Lanchero', phone: null },
+      availabilityWindows: [{
+        startsAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+        endsAt: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString(),
+      }],
+    }];
+    home.openTripModal();
+    home.tripBoatId = 'boat-id';
+    home.tripOrigin = ' Tigre ';
+    home.tripDestination = ' Delta ';
+    home.tripStartsAt = formatDateTimeLocal(new Date(Date.now() + 60 * 60 * 1000));
+    home.tripEndsAt = formatDateTimeLocal(new Date(Date.now() + 2 * 60 * 60 * 1000));
+
+    home.createTrip();
+
+    expect(httpClient.post).toHaveBeenCalledWith(
+      jasmine.stringMatching('/admin/trips$'),
+      jasmine.objectContaining({
+        boatId: 'boat-id',
+        origin: 'Tigre',
+        destination: 'Delta',
+      }),
+      jasmine.any(Object),
+    );
+    expect(home.showTripModal).toBeFalse();
+    expect(home.tripSuccess).toContain('Estrella');
+    fixture.destroy();
+  });
+
+  it('does not publish a trip without a saved availability window', () => {
+    localStorage.setItem('nautiflow_access_token', 'admin-token');
+    const fixture = TestBed.createComponent(Home);
+    const home = fixture.componentInstance;
+    home.userRole = 'admin';
+    home.activeFleet = [{
+      id: 'boat-id',
+      name: 'Estrella',
+      registrationNumber: 'ABC-123',
+      passengerCapacity: 8,
+      availablePassengerCapacity: 8,
+      coverageZone: 'Delta',
+      owner: { fullName: 'Lanchero', phone: null },
+      availabilityWindows: [],
+    }];
+    home.tripBoatId = 'boat-id';
+    home.tripOrigin = 'Tigre';
+    home.tripDestination = 'Delta';
+    home.tripStartsAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    home.tripEndsAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+
+    home.createTrip();
+
+    expect(httpClient.post).not.toHaveBeenCalled();
+    expect(home.tripError).toContain('Guarda primero una disponibilidad');
+    fixture.destroy();
+  });
+
   it('publishes an empty leg and prepares the WhatsApp message', () => {
     localStorage.setItem('nautiflow_access_token', 'admin-token');
     const returnsAt = new Date(Date.now() + 60 * 60 * 1000);
@@ -293,6 +622,19 @@ describe('Home approval and owner registration', () => {
     );
     const fixture = TestBed.createComponent(Home);
     const home = fixture.componentInstance;
+    home.activeFleet = [{
+      id: 'boat-id',
+      name: 'Estrella',
+      registrationNumber: 'ABC-123',
+      passengerCapacity: 8,
+      availablePassengerCapacity: 8,
+      coverageZone: 'Delta',
+      owner: { fullName: 'Lanchero', phone: null },
+      availabilityWindows: [{
+        startsAt: new Date(returnsAt.getTime() - 30 * 60 * 1000).toISOString(),
+        endsAt: new Date(returnsAt.getTime() + 30 * 60 * 1000).toISOString(),
+      }],
+    }];
     home.emptyLegBoatId = 'boat-id';
     home.emptyLegOrigin = 'Primera Sección';
     home.emptyLegDestination = 'Tigre';
@@ -313,6 +655,42 @@ describe('Home approval and owner registration', () => {
     expect(home.emptyLegAnnouncement).toContain('Lancha Estrella vuelve vacía');
     expect(home.emptyLegAnnouncement).toContain('¿Alguien necesita un rescate');
     expect(home.operationsSuccess).toContain('Retorno vacío publicado');
+    fixture.destroy();
+  });
+
+  it('submits a public review using the trip link token', () => {
+    const token = 'a'.repeat(43);
+    routeQuery['review'] = token;
+    httpClient.get.and.callFake((url: string) =>
+      url.endsWith('/reviews/' + token)
+        ? of({
+            trip: {
+              id: 'trip-id',
+              origin: 'Tigre',
+              destination: 'Delta',
+              completedAt: '2026-04-11T12:00:00.000Z',
+              boat: { name: 'Estrella' },
+            },
+            alreadyReviewed: false,
+          })
+        : of([]),
+    );
+    httpClient.post.and.returnValue(of({ id: 'feedback-id' }));
+
+    const fixture = TestBed.createComponent(Home);
+    const home = fixture.componentInstance;
+
+    expect(home.reviewDetails?.trip.boat.name).toBe('Estrella');
+    home.reviewRating = 5;
+    home.reviewComment = 'Excelente viaje';
+    home.submitReview();
+
+    expect(httpClient.post).toHaveBeenCalledWith(
+      jasmine.stringMatching('/reviews/' + token + '$'),
+      { rating: 5, comment: 'Excelente viaje' },
+    );
+    expect(home.reviewDetails?.alreadyReviewed).toBeTrue();
+    expect(home.reviewSuccess).toContain('Gracias');
     fixture.destroy();
   });
 });

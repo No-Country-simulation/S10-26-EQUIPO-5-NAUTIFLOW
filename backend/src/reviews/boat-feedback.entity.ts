@@ -10,23 +10,20 @@ import {
 } from 'typeorm';
 import type { Owner } from '../owners/owner.entity.js';
 import type { Boat } from '../boats/boat.entity.js';
-import type { BoatBooking } from './boat-booking.entity.js';
+import type { Trip } from '../trips/trip.entity.js';
 
 @Entity('boat_feedback')
-@Unique('UQ_boat_feedback_booking', ['bookingId'])
+@Unique('UQ_boat_feedback_trip', ['tripId'])
 export class BoatFeedback {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column({ name: 'booking_id', type: 'uuid' })
-  bookingId!: string;
+  @Column({ name: 'trip_id', type: 'uuid', nullable: true })
+  tripId!: string | null;
 
-  @OneToOne('BoatBooking', (booking: BoatBooking) => booking.feedback, {
-    nullable: false,
-    onDelete: 'CASCADE',
-  })
-  @JoinColumn({ name: 'booking_id' })
-  booking!: BoatBooking;
+  @OneToOne('Trip', { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'trip_id' })
+  trip!: Trip | null;
 
   @Column({ name: 'boat_id', type: 'uuid' })
   boatId!: string;
@@ -38,19 +35,12 @@ export class BoatFeedback {
   @JoinColumn({ name: 'boat_id' })
   boat!: Boat;
 
-  @Column({ name: 'passenger_id', type: 'uuid' })
-  passengerId!: string;
-
   @Column({ name: 'owner_id', type: 'uuid' })
   ownerId!: string;
 
   @ManyToOne('Owner', { nullable: false, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'owner_id' })
   owner!: Owner;
-
-  @ManyToOne('Owner', { nullable: false, onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'passenger_id' })
-  passenger!: Owner;
 
   @Column({ type: 'integer' })
   rating!: number;
