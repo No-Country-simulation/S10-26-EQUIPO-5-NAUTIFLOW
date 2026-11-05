@@ -4,7 +4,7 @@ import {
   HttpErrorResponse,
   HttpParams,
 } from '@angular/common/http';
-import { Component, Inject, PLATFORM_ID } from '@angular/core';
+import { Component, DestroyRef, Inject, PLATFORM_ID, inject } from '@angular/core';
 import {
   FormBuilder,
   FormControl,
@@ -27,6 +27,15 @@ interface OwnerResponse {
   email: string;
 }
 
+interface AdminUser {
+  id: string;
+  fullName: string;
+  email: string;
+  phone: string | null;
+  role: 'admin' | 'owner';
+  createdAt: string;
+}
+
 interface BoatResponse {
   id: string;
   name: string;
@@ -47,24 +56,11 @@ interface AccountUser {
   role?: string;
 }
 
-interface PassengerResponse {
-  id: string;
-  fullName: string;
-  email: string;
-}
-
-interface PassengerFeedback {
+interface ReviewFeedback {
   id: string;
   rating: number;
   comment: string | null;
   createdAt: string;
-}
-
-interface PassengerBooking {
-  id: string;
-  createdAt: string;
-  feedback: PassengerFeedback | null;
-  boat: Boat;
 }
 
 interface AdminBoat extends Boat {
@@ -79,6 +75,7 @@ interface AdminFleetBoat {
   availablePassengerCapacity: number;
   coverageZone: string;
   owner: { fullName: string; phone: string | null };
+  availabilityWindows: { startsAt: string; endsAt: string }[];
 }
 
 interface FleetSearchResult extends AdminFleetBoat {
@@ -104,16 +101,67 @@ interface OwnerNotification {
   createdAt: string;
 }
 
+interface PublicTrip {
+  id: string;
+  origin: string;
+  destination: string;
+  startsAt: string;
+  endsAt: string | null;
+  isEmptyReturn: boolean;
+  boat: {
+    id: string;
+    name: string;
+    passengerCapacity: number;
+    imageUrl: string | null;
+    owner: { fullName: string; whatsappUrl: string | null };
+  };
+}
+
+interface AdminTrip {
+  id: string;
+  origin: string;
+  destination: string;
+  startsAt: string;
+  endsAt: string | null;
+  createdAt: string;
+  completedAt: string | null;
+  isEmptyReturn: boolean;
+  boat: { id: string; name: string };
+}
+
+interface ReviewDetails {
+  trip: {
+    id: string;
+    origin: string;
+    destination: string;
+    completedAt: string;
+    boat: { name: string };
+  };
+  alreadyReviewed: boolean;
+}
+
+interface CompletedTrip {
+  id: string;
+  completedAt: string;
+  reviewToken: string;
+  reviewTokenExpiresAt: string;
+}
+
 type DocumentType = 'license' | 'insurance' | 'criminalRecord';
+type SuccessMessageField =
+  | 'successMessage'
+  | 'loginSuccess'
+  | 'authSuccessMessage'
+  | 'forgotSuccess'
+  | 'accountSuccess'
+  | 'tripSuccess'
+  | 'operationsSuccess'
+  | 'reviewSuccess'
+  | 'documentsSuccess';
 type OwnerForm = FormGroup<{
   fullName: FormControl<string>;
   email: FormControl<string>;
   phone: FormControl<string>;
-  password: FormControl<string>;
-}>;
-type PassengerForm = FormGroup<{
-  fullName: FormControl<string>;
-  email: FormControl<string>;
   password: FormControl<string>;
 }>;
 type BoatForm = FormGroup<{
@@ -135,10 +183,14 @@ type ForgotForm = FormGroup<{ email: FormControl<string> }>;
   templateUrl: './home.html',
 })
 export class Home {
+  private readonly destroyRef = inject(DestroyRef);
   private readonly apiUrl: string;
   private readonly isBrowser: boolean;
+  private readonly successTimers = new Map<
+    SuccessMessageField,
+    ReturnType<typeof setTimeout>
+  >();
   currentStep = 1;
-  registrationRole: 'owner' | 'passenger' = 'owner';
   activeModal: 'login' | 'forgot' | 'register' | null = null;
   isSubmitting = false;
   isLoginSubmitting = false;
@@ -149,29 +201,58 @@ export class Home {
   loginSuccess = '';
   authSuccessMessage = '';
   showOwnerPassword = false;
-  showPassengerPassword = false;
   showLoginPassword = false;
   forgotError = '';
   forgotSuccess = '';
   registeredOwner?: OwnerResponse;
   registeredBoat?: BoatResponse;
   currentUser?: AccountUser;
-  userRole: 'owner' | 'admin' | 'passenger' | null = null;
-  loginRole: 'owner' | 'admin' | 'passenger' = 'owner';
+  userRole: 'owner' | 'admin' | null = null;
+  loginRole: 'owner' | 'admin' = 'owner';
   myBoats: Boat[] = [];
   availableBoats: Boat[] = [];
   filteredAvailableBoats: Boat[] = [];
   isLoadingAvailableBoats = false;
   catalogError = '';
   pendingBoats: AdminBoat[] = [];
+  isLoadingPendingBoats = false;
   documentedCapacities: Record<string, number | null> = {};
   verifyingBoatId: string | null = null;
   accountSuccess = '';
-  adminOwners: { id: string; fullName: string; email: string }[] = [];
+  adminUsers: AdminUser[] = [];
+  adminUserSearch = '';
+  isLoadingAdminUsers = false;
+  adminUsersError = '';
   activeFleet: AdminFleetBoat[] = [];
+  isLoadingActiveFleet = false;
   fleetSearchResults: FleetSearchResult[] = [];
   hasSearchedFleet = false;
   emptyLegs: EmptyLeg[] = [];
+  adminTrips: AdminTrip[] = [];
+  isLoadingAdminTrips = false;
+  adminTripsError = '';
+  publicTrips: PublicTrip[] = [];
+  isLoadingPublicTrips = false;
+  publicTripsError = '';
+  showTripModal = false;
+  isCreatingTrip = false;
+  completingTripId: string | null = null;
+  tripError = '';
+  tripSuccess = '';
+  tripBoatId = '';
+  tripOrigin = '';
+  tripDestination = '';
+  tripStartsAt = '';
+  tripEndsAt = '';
+  completedReviewLink = '';
+  readonly reviewToken: string | null;
+  reviewDetails?: ReviewDetails;
+  isLoadingReview = false;
+  isSubmittingReview = false;
+  reviewRating = 5;
+  reviewComment = '';
+  reviewError = '';
+  reviewSuccess = '';
   ownerNotifications: OwnerNotification[] = [];
   fleetSearchPassengers = 1;
   fleetSearchZone = '';
@@ -190,16 +271,10 @@ export class Home {
   isSavingAvailability = false;
   isPublishingEmptyLeg = false;
   accountError = '';
-  passengerSearch = '';
+  catalogSearch = '';
   minPassengerCapacity: number | null = null;
   coverageZoneFilter = '';
   availabilityFilter: 'all' | 'available' | 'unavailable' = 'all';
-  passengerBookings: PassengerBooking[] = [];
-  bookingError = '';
-  bookingSuccess = '';
-  feedbackDrafts: Record<string, { rating: number; comment: string }> = {};
-  reservingBoatId: string | null = null;
-  submittingFeedbackId: string | null = null;
   showDocumentsModal = false;
   isUploadingDocuments = false;
   documentsError = '';
@@ -214,7 +289,6 @@ export class Home {
   ];
 
   readonly ownerForm: OwnerForm;
-  readonly passengerForm: PassengerForm;
   readonly boatForm: BoatForm;
   readonly loginForm: LoginForm;
   readonly forgotForm: ForgotForm;
@@ -226,6 +300,10 @@ export class Home {
     route: ActivatedRoute,
     @Inject(PLATFORM_ID) platformId: object,
   ) {
+    this.destroyRef.onDestroy(() => {
+      this.successTimers.forEach((timer) => clearTimeout(timer));
+      this.successTimers.clear();
+    });
     this.isBrowser = isPlatformBrowser(platformId);
     this.apiUrl = this.isBrowser
       ? `${window.location.protocol}//${window.location.hostname}:3001/api`
@@ -233,7 +311,12 @@ export class Home {
     if (this.isBrowser) {
       this.restoreSession();
     }
-    if (this.isBrowser) this.loadAvailableBoats();
+    this.reviewToken = route.snapshot.queryParamMap.get('review');
+    if (this.isBrowser) {
+      this.loadAvailableBoats();
+      this.loadPublicTrips();
+      if (this.reviewToken) this.loadReview();
+    }
     this.ownerForm = this.formBuilder.nonNullable.group({
       fullName: ['', [Validators.required, Validators.minLength(2), Validators.maxLength(120)]],
       email: [
@@ -248,11 +331,6 @@ export class Home {
         ],
       ],
       phone: ['', [Validators.required, Validators.minLength(6), Validators.maxLength(30)]],
-      password: ['', [Validators.required, Validators.minLength(12), Validators.maxLength(128)]],
-    });
-    this.passengerForm = this.formBuilder.nonNullable.group({
-      fullName: ['', [Validators.required, Validators.minLength(2), Validators.maxLength(120)]],
-      email: ['', [Validators.required, Validators.email, Validators.maxLength(320)]],
       password: ['', [Validators.required, Validators.minLength(12), Validators.maxLength(128)]],
     });
     this.boatForm = this.formBuilder.nonNullable.group({
@@ -275,36 +353,20 @@ export class Home {
 
   openRegistration(): void {
     this.errorMessage = '';
-    this.successMessage = '';
-    this.authSuccessMessage = '';
-    this.registrationRole = 'owner';
+    this.setTemporarySuccess('successMessage', '');
+    this.setTemporarySuccess('authSuccessMessage', '');
     this.activeModal = 'register';
-  }
-
-  selectRegistrationRole(role: 'owner' | 'passenger'): void {
-    this.registrationRole = role;
-    this.errorMessage = '';
-    this.successMessage = '';
   }
 
   openLogin(): void {
     this.loginError = '';
-    this.loginSuccess = '';
-    this.authSuccessMessage = '';
+    this.setTemporarySuccess('loginSuccess', '');
+    this.setTemporarySuccess('authSuccessMessage', '');
     this.activeModal = 'login';
-  }
-
-  openPassengerLogin(): void {
-    this.loginRole = 'passenger';
-    this.openLogin();
   }
 
   toggleOwnerPasswordVisibility(): void {
     this.showOwnerPassword = !this.showOwnerPassword;
-  }
-
-  togglePassengerPasswordVisibility(): void {
-    this.showPassengerPassword = !this.showPassengerPassword;
   }
 
   toggleLoginPasswordVisibility(): void {
@@ -312,10 +374,14 @@ export class Home {
   }
 
   dismissAuthSuccess(): void {
-    this.authSuccessMessage = '';
+    this.setTemporarySuccess('authSuccessMessage', '');
   }
 
-  selectLoginRole(role: 'owner' | 'admin' | 'passenger'): void {
+  selectLoginRole(role: 'owner' | 'admin'): void {
+    if (this.loginRole !== role) {
+      this.loginForm.reset();
+      this.showLoginPassword = false;
+    }
     this.loginRole = role;
     this.loginError = '';
   }
@@ -323,7 +389,7 @@ export class Home {
   openForgot(): void {
     this.loginError = '';
     this.forgotError = '';
-    this.forgotSuccess = '';
+    this.setTemporarySuccess('forgotSuccess', '');
     this.activeModal = 'forgot';
   }
 
@@ -336,7 +402,7 @@ export class Home {
   registerOwner(): void {
     if (this.isSubmitting) return;
     this.errorMessage = '';
-    this.successMessage = '';
+    this.setTemporarySuccess('successMessage', '');
     if (this.ownerForm.invalid) {
       this.ownerForm.markAllAsTouched();
       this.errorMessage = 'Revisa los campos marcados antes de continuar.';
@@ -348,64 +414,13 @@ export class Home {
         this.registeredOwner = owner;
         this.currentStep = 2;
         this.isSubmitting = false;
-        this.successMessage =
-          'Registro de lanchero exitoso. Ahora registra tu lancha.';
+        this.setTemporarySuccess(
+          'successMessage',
+          'Registro de lanchero exitoso. Ahora registra tu lancha.',
+        );
       },
       error: (error: HttpErrorResponse) => this.handleError(error, this.ownerForm),
     });
-  }
-
-  registerPassenger(): void {
-    if (this.isSubmitting) return;
-    this.errorMessage = '';
-    if (this.passengerForm.invalid) {
-      this.passengerForm.markAllAsTouched();
-      this.errorMessage = 'Revisa los campos marcados antes de continuar.';
-      return;
-    }
-
-    const passengerCredentials = this.passengerForm.getRawValue();
-    this.isSubmitting = true;
-    this.http
-      .post<PassengerResponse>(
-        `${this.apiUrl}/passengers/register`,
-        passengerCredentials,
-      )
-      .subscribe({
-        next: () => {
-          this.http
-            .post<AccountResponse>(
-              `${this.apiUrl}/auth/passenger-login`,
-              {
-                email: passengerCredentials.email,
-                password: passengerCredentials.password,
-              },
-            )
-            .subscribe({
-              next: (response) => {
-                this.isSubmitting = false;
-                this.passengerForm.reset();
-                this.completeLogin(
-                  response,
-                  'passenger',
-                  'Cuenta de pasajero creada. ¡Bienvenido!',
-                );
-              },
-              error: (error: HttpErrorResponse) => {
-                this.isSubmitting = false;
-                this.loginRole = 'passenger';
-                this.loginForm.setValue({
-                  email: passengerCredentials.email,
-                  password: passengerCredentials.password,
-                });
-                this.activeModal = 'login';
-                this.loginError = `La cuenta se creó, pero no se pudo iniciar sesión: ${this.messageFromError(error)}`;
-              },
-            });
-        },
-        error: (error: HttpErrorResponse) =>
-          this.handleError(error, this.passengerForm),
-      });
   }
 
   registerBoat(): void {
@@ -415,7 +430,7 @@ export class Home {
       return;
     }
     this.errorMessage = '';
-    this.successMessage = '';
+    this.setTemporarySuccess('successMessage', '');
     this.imageError = '';
     if (!this.registeredOwner) {
       this.errorMessage = 'Primero debes completar el registro del lanchero.';
@@ -480,7 +495,7 @@ export class Home {
 
   login(): void {
     this.loginError = '';
-    this.loginSuccess = '';
+    this.setTemporarySuccess('loginSuccess', '');
     if (this.loginForm.invalid) {
       this.loginForm.markAllAsTouched();
       this.loginError = 'Ingresa un email y una contraseña válidos.';
@@ -490,7 +505,6 @@ export class Home {
     const endpoint = {
       admin: 'login',
       owner: 'owner-login',
-      passenger: 'passenger-login',
     }[this.loginRole];
     this.http.post<AccountResponse>(`${this.apiUrl}/auth/${endpoint}`, this.loginForm.getRawValue()).subscribe({
       next: (response) => {
@@ -500,15 +514,16 @@ export class Home {
       },
       error: (error: HttpErrorResponse) => {
         this.isLoginSubmitting = false;
-        this.applyServerError(this.loginForm, this.messageFromError(error));
-        this.loginError = this.messageFromError(error);
+        const message = this.loginMessageFromError(error);
+        this.applyServerError(this.loginForm, message);
+        this.loginError = message;
       },
     });
   }
 
   private completeLogin(
     response: AccountResponse,
-    role: 'owner' | 'admin' | 'passenger',
+    role: 'owner' | 'admin',
     message: string,
   ): void {
     const account = response.user ?? response.admin;
@@ -524,13 +539,28 @@ export class Home {
     this.currentUser = account;
     this.userRole = role;
     this.loadAccountData();
-    this.loginSuccess = message;
-    this.authSuccessMessage = message;
+    this.setTemporarySuccess('loginSuccess', message);
+    this.setTemporarySuccess('authSuccessMessage', message);
     this.activeModal = null;
   }
 
+  private setTemporarySuccess(field: SuccessMessageField, message: string): void {
+    const previousTimer = this.successTimers.get(field);
+    if (previousTimer) clearTimeout(previousTimer);
+    this.successTimers.delete(field);
+    this[field] = message;
+
+    if (!message || !this.isBrowser) return;
+
+    const timer = setTimeout(() => {
+      this[field] = '';
+      this.successTimers.delete(field);
+    }, 5000);
+    this.successTimers.set(field, timer);
+  }
+
   logout(): void {
-    this.authSuccessMessage = '';
+    this.setTemporarySuccess('authSuccessMessage', '');
     if (this.isBrowser) {
       localStorage.removeItem('nautiflow_access_token');
       localStorage.removeItem('nautiflow_role');
@@ -539,18 +569,32 @@ export class Home {
     this.currentUser = undefined;
     this.userRole = null;
     this.myBoats = [];
-    this.passengerBookings = [];
     this.pendingBoats = [];
-    this.adminOwners = [];
+    this.adminUsers = [];
+    this.adminUserSearch = '';
+    this.adminUsersError = '';
+    this.isLoadingAdminUsers = false;
     this.activeFleet = [];
+    this.isLoadingPendingBoats = false;
+    this.isLoadingActiveFleet = false;
     this.fleetSearchResults = [];
     this.emptyLegs = [];
+    this.adminTrips = [];
+    this.isLoadingAdminTrips = false;
+    this.adminTripsError = '';
+    this.publicTrips = [];
+    this.isLoadingPublicTrips = false;
+    this.showTripModal = false;
+    this.tripBoatId = '';
+    this.tripError = '';
+    this.completedReviewLink = '';
+    this.setTemporarySuccess('tripSuccess', '');
     this.ownerNotifications = [];
     this.emptyLegAnnouncement = '';
   }
 
   filterAvailableBoats(): void {
-    const search = this.passengerSearch.trim().toLowerCase();
+    const search = this.catalogSearch.trim().toLowerCase();
     this.filteredAvailableBoats = search
       ? this.availableBoats.filter((boat) =>
           `${boat.name} ${boat.coverageZone} ${boat.owner?.fullName ?? ''}`
@@ -578,79 +622,6 @@ export class Home {
     return item.id;
   }
 
-  hasBookingForBoat(boatId: string): boolean {
-    return this.passengerBookings.some((booking) => booking.boat.id === boatId);
-  }
-
-  registerForBoat(boat: Boat): void {
-    if (this.userRole !== 'passenger') {
-      this.openPassengerLogin();
-      return;
-    }
-    if (this.hasBookingForBoat(boat.id)) return;
-    if (boat.availablePassengerCapacity < 1) {
-      this.bookingError = 'La embarcación ya no tiene plazas disponibles.';
-      return;
-    }
-
-    const token = this.getAccessToken();
-    if (!token) {
-      this.openPassengerLogin();
-      return;
-    }
-
-    this.bookingError = '';
-    this.bookingSuccess = '';
-    this.reservingBoatId = boat.id;
-    this.http
-      .post<PassengerBooking>(
-        `${this.apiUrl}/passengers/boats/${boat.id}/register`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } },
-      )
-      .subscribe({
-        next: () => {
-          this.reservingBoatId = null;
-          this.bookingSuccess = `Tu plaza en ${boat.name} quedó registrada.`;
-          this.searchAvailableBoats();
-          this.loadPassengerBookings();
-        },
-        error: (error: HttpErrorResponse) => {
-          this.reservingBoatId = null;
-          this.bookingError = this.messageFromError(error);
-          this.searchAvailableBoats();
-        },
-      });
-  }
-
-  submitFeedback(bookingId: string): void {
-    const draft = this.feedbackDrafts[bookingId];
-    const token = this.getAccessToken();
-    if (!draft || !token || !Number.isInteger(draft.rating)) return;
-
-    this.bookingError = '';
-    this.bookingSuccess = '';
-    this.submittingFeedbackId = bookingId;
-    this.http
-      .post<PassengerFeedback>(
-        `${this.apiUrl}/passengers/bookings/${bookingId}/feedback`,
-        { rating: draft.rating, comment: draft.comment },
-        { headers: { Authorization: `Bearer ${token}` } },
-      )
-      .subscribe({
-        next: () => {
-          this.submittingFeedbackId = null;
-          this.bookingSuccess = 'Gracias por compartir tu opinión del lanchero.';
-          this.loadPassengerBookings();
-          this.searchAvailableBoats();
-        },
-        error: (error: HttpErrorResponse) => {
-          this.submittingFeedbackId = null;
-          this.bookingError = this.messageFromError(error);
-        },
-      });
-  }
-
   verifyBoat(boatId: string, status: 'approved' | 'rejected'): void {
     if (this.verifyingBoatId) return;
     const token = this.getAccessToken();
@@ -669,7 +640,7 @@ export class Home {
       return;
     }
     this.accountError = '';
-    this.accountSuccess = '';
+    this.setTemporarySuccess('accountSuccess', '');
     this.verifyingBoatId = boatId;
     this.http.patch<AdminBoat>(`${this.apiUrl}/admin/boats/${boatId}/verification`, {
       status,
@@ -678,10 +649,12 @@ export class Home {
     }, { headers: { Authorization: `Bearer ${token}` } }).subscribe({
       next: () => {
         this.pendingBoats = this.pendingBoats.filter((boat) => boat.id !== boatId);
-        this.accountSuccess =
+        this.setTemporarySuccess(
+          'accountSuccess',
           status === 'approved'
             ? 'Embarcación aprobada y publicada en el catálogo.'
-            : 'Revisión de la embarcación rechazada.';
+            : 'Revisión de la embarcación rechazada.',
+        );
         this.verifyingBoatId = null;
         this.loadAdminData();
         if (status === 'approved') this.searchAvailableBoats();
@@ -737,6 +710,7 @@ export class Home {
   }
 
   saveAvailabilityWindow(): void {
+    if (this.isSavingAvailability) return;
     const startsAt = new Date(this.availabilityStartsAt);
     const endsAt = new Date(this.availabilityEndsAt);
     if (
@@ -757,7 +731,7 @@ export class Home {
     }
 
     this.operationsError = '';
-    this.operationsSuccess = '';
+    this.setTemporarySuccess('operationsSuccess', '');
     this.isSavingAvailability = true;
     this.http
       .post(
@@ -772,9 +746,10 @@ export class Home {
       .subscribe({
         next: () => {
           this.isSavingAvailability = false;
-          this.operationsSuccess = 'Disponibilidad registrada.';
+          this.setTemporarySuccess('operationsSuccess', 'Disponibilidad registrada.');
           this.availabilityStartsAt = '';
           this.availabilityEndsAt = '';
+          this.loadActiveFleet({ Authorization: 'Bearer ' + token });
         },
         error: (error: HttpErrorResponse) => {
           this.isSavingAvailability = false;
@@ -796,6 +771,20 @@ export class Home {
         'Completa la lancha, el trayecto y un horario de regreso futuro.';
       return;
     }
+    const boat = this.activeFleet.find(
+      (activeBoat) => activeBoat.id === this.emptyLegBoatId,
+    );
+    if (
+      !boat?.availabilityWindows.some(
+        (window) =>
+          new Date(window.startsAt) <= returnsAt &&
+          new Date(window.endsAt) > returnsAt,
+      )
+    ) {
+      this.operationsError =
+        'Guarda primero una disponibilidad que cubra el horario del retorno.';
+      return;
+    }
     const token = this.getAccessToken();
     if (!token) {
       this.operationsError = 'Inicia sesión como administrador.';
@@ -803,7 +792,7 @@ export class Home {
     }
 
     this.operationsError = '';
-    this.operationsSuccess = '';
+    this.setTemporarySuccess('operationsSuccess', '');
     this.isPublishingEmptyLeg = true;
     this.http
       .post<EmptyLeg>(
@@ -822,14 +811,283 @@ export class Home {
           this.emptyLegOrigin = '';
           this.emptyLegDestination = '';
           this.emptyLegReturnsAt = '';
-          this.operationsSuccess =
-            'Retorno vacío publicado y guardado en el panel.';
+          this.setTemporarySuccess(
+            'operationsSuccess',
+            'Retorno vacío publicado y guardado en el panel.',
+          );
           this.isPublishingEmptyLeg = false;
           this.loadEmptyLegs();
+          this.loadAdminTrips();
+          this.loadPublicTrips();
         },
         error: (error: HttpErrorResponse) => {
           this.isPublishingEmptyLeg = false;
           this.operationsError = this.messageFromError(error);
+        },
+      });
+  }
+
+  openTripModal(): void {
+    if (this.userRole !== 'admin') return;
+    this.showTripModal = true;
+    this.tripError = '';
+    this.setTemporarySuccess('tripSuccess', '');
+  }
+
+  closeTripModal(): void {
+    if (!this.isCreatingTrip) this.showTripModal = false;
+  }
+
+  get selectedTripBoat(): AdminFleetBoat | undefined {
+    return this.activeFleet.find((boat) => boat.id === this.tripBoatId);
+  }
+
+  get tripBoatsWithAvailability(): AdminFleetBoat[] {
+    const now = new Date();
+    return this.activeFleet.filter((boat) =>
+      boat.availabilityWindows.some(
+        (window) => new Date(window.endsAt) > now,
+      ),
+    );
+  }
+
+  get selectedTripBoatHasAvailability(): boolean {
+    const boat = this.selectedTripBoat;
+    const startsAt = new Date(this.tripStartsAt);
+    const endsAt = new Date(this.tripEndsAt);
+    if (
+      !boat ||
+      Number.isNaN(startsAt.getTime()) ||
+      Number.isNaN(endsAt.getTime()) ||
+      endsAt <= startsAt
+    ) {
+      return false;
+    }
+
+    return boat.availabilityWindows.some(
+      (window) =>
+        new Date(window.startsAt) <= startsAt &&
+        new Date(window.endsAt) >= endsAt,
+    );
+  }
+
+  get filteredAdminAdmins(): AdminUser[] {
+    return this.filterAdminUsers('admin');
+  }
+
+  get filteredAdminOwners(): AdminUser[] {
+    return this.filterAdminUsers('owner');
+  }
+
+  private filterAdminUsers(role: AdminUser['role']): AdminUser[] {
+    const search = this.adminUserSearch.trim().toLocaleLowerCase();
+    return this.adminUsers.filter(
+      (user) =>
+        user.role === role &&
+        (!search ||
+          (user.fullName + ' ' + user.email + ' ' + (user.phone || ''))
+            .toLocaleLowerCase()
+            .includes(search)),
+    );
+  }
+
+  createTrip(): void {
+    const token = this.getAccessToken();
+    const boat = this.selectedTripBoat;
+    const startsAt = new Date(this.tripStartsAt);
+    const endsAt = new Date(this.tripEndsAt);
+    if (this.isCreatingTrip) return;
+    if (this.userRole !== 'admin' || !token) {
+      this.tripError = 'Inicia sesión como administrador para programar un viaje.';
+      return;
+    }
+    if (
+      !boat ||
+      !this.tripOrigin.trim() ||
+      !this.tripDestination.trim() ||
+      Number.isNaN(startsAt.getTime()) ||
+      Number.isNaN(endsAt.getTime()) ||
+      startsAt <= new Date() ||
+      endsAt <= startsAt
+    ) {
+      this.tripError = 'Selecciona una lancha y completa el trayecto con un horario futuro válido.';
+      return;
+    }
+    if (!this.selectedTripBoatHasAvailability) {
+      this.tripError =
+        'Guarda primero una disponibilidad que cubra todo el horario del viaje.';
+      return;
+    }
+
+    this.tripError = '';
+    this.isCreatingTrip = true;
+    this.http
+      .post<AdminTrip>(
+        this.apiUrl + '/admin/trips',
+        {
+          boatId: boat.id,
+          origin: this.tripOrigin.trim(),
+          destination: this.tripDestination.trim(),
+          startsAt: startsAt.toISOString(),
+          endsAt: endsAt.toISOString(),
+        },
+        { headers: { Authorization: 'Bearer ' + token } },
+      )
+      .subscribe({
+        next: (trip) => {
+          this.isCreatingTrip = false;
+          this.tripBoatId = '';
+          this.tripOrigin = '';
+          this.tripDestination = '';
+          this.tripStartsAt = '';
+          this.tripEndsAt = '';
+          this.setTemporarySuccess(
+            'tripSuccess',
+            'Viaje publicado para la lancha ' + trip.boat.name + '.',
+          );
+          this.showTripModal = false;
+          this.loadAdminTrips();
+          this.loadPublicTrips();
+        },
+        error: (error: HttpErrorResponse) => {
+          this.isCreatingTrip = false;
+          this.tripError = this.messageFromError(error);
+        },
+      });
+  }
+
+  completeTrip(trip: AdminTrip): void {
+    const token = this.getAccessToken();
+    if (!token || this.userRole !== 'admin' || this.completingTripId) return;
+    this.tripError = '';
+    this.completingTripId = trip.id;
+    this.http
+      .post<CompletedTrip>(
+        this.apiUrl + '/admin/trips/' + trip.id + '/complete',
+        {},
+        { headers: { Authorization: 'Bearer ' + token } },
+      )
+      .subscribe({
+        next: (completed) => {
+          this.completingTripId = null;
+          this.completedReviewLink =
+            window.location.origin + '/?review=' + encodeURIComponent(completed.reviewToken);
+          this.setTemporarySuccess(
+            'tripSuccess',
+            'Viaje completado. Comparte el enlace de reseña antes del ' +
+              new Date(completed.reviewTokenExpiresAt).toLocaleDateString('es-AR') + '.',
+          );
+          this.loadAdminTrips();
+          this.loadPublicTrips();
+        },
+        error: (error: HttpErrorResponse) => {
+          this.completingTripId = null;
+          this.tripError = this.messageFromError(error);
+        },
+      });
+  }
+
+  async copyCompletedReviewLink(): Promise<void> {
+    if (!this.completedReviewLink || !navigator.clipboard) {
+      this.tripError = 'No se pudo acceder al portapapeles. Copia el enlace manualmente.';
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(this.completedReviewLink);
+      this.tripError = '';
+    } catch {
+      this.tripError = 'No se pudo copiar el enlace. Selecciónalo y cópialo manualmente.';
+    }
+  }
+
+  private loadAdminTrips(): void {
+    const token = this.getAccessToken();
+    if (!token || this.userRole !== 'admin') return;
+    this.isLoadingAdminTrips = true;
+    this.adminTripsError = '';
+    this.http
+      .get<AdminTrip[]>(this.apiUrl + '/admin/trips', {
+        headers: { Authorization: 'Bearer ' + token },
+      })
+      .subscribe({
+        next: (trips) => {
+          this.adminTrips = trips;
+          this.isLoadingAdminTrips = false;
+        },
+        error: (error: HttpErrorResponse) => {
+          this.isLoadingAdminTrips = false;
+          this.adminTripsError = this.messageFromError(error);
+        },
+      });
+  }
+
+  private loadPublicTrips(): void {
+    this.isLoadingPublicTrips = true;
+    this.publicTripsError = '';
+    this.http.get<PublicTrip[]>(this.apiUrl + '/trips').subscribe({
+      next: (trips) => {
+        this.publicTrips = trips;
+        this.isLoadingPublicTrips = false;
+      },
+      error: (error: HttpErrorResponse) => {
+        this.publicTrips = [];
+        this.isLoadingPublicTrips = false;
+        this.publicTripsError = this.messageFromError(error);
+      },
+    });
+  }
+
+  retryPublicTrips(): void {
+    this.loadPublicTrips();
+  }
+
+  private loadReview(): void {
+    if (!this.reviewToken) return;
+    this.isLoadingReview = true;
+    this.http
+      .get<ReviewDetails>(this.apiUrl + '/reviews/' + encodeURIComponent(this.reviewToken))
+      .subscribe({
+        next: (details) => {
+          this.reviewDetails = details;
+          this.isLoadingReview = false;
+        },
+        error: (error: HttpErrorResponse) => {
+          this.isLoadingReview = false;
+          this.reviewError = this.messageFromError(error);
+        },
+      });
+  }
+
+  submitReview(): void {
+    if (
+      !this.reviewToken ||
+      !this.reviewDetails ||
+      this.reviewDetails.alreadyReviewed ||
+      this.isSubmittingReview ||
+      !Number.isInteger(this.reviewRating) ||
+      this.reviewRating < 1 ||
+      this.reviewRating > 5
+    ) return;
+
+    this.reviewError = '';
+    this.setTemporarySuccess('reviewSuccess', '');
+    this.isSubmittingReview = true;
+    this.http
+      .post<ReviewFeedback>(
+        this.apiUrl + '/reviews/' + encodeURIComponent(this.reviewToken),
+        { rating: this.reviewRating, comment: this.reviewComment.trim() },
+      )
+      .subscribe({
+        next: () => {
+          this.isSubmittingReview = false;
+          if (this.reviewDetails) this.reviewDetails.alreadyReviewed = true;
+          this.reviewComment = '';
+          this.setTemporarySuccess('reviewSuccess', 'Gracias por compartir tu experiencia.');
+          this.loadAvailableBoats();
+        },
+        error: (error: HttpErrorResponse) => {
+          this.isSubmittingReview = false;
+          this.reviewError = this.messageFromError(error);
         },
       });
   }
@@ -842,7 +1100,10 @@ export class Home {
     }
     try {
       await navigator.clipboard.writeText(this.emptyLegAnnouncement);
-      this.operationsSuccess = 'Mensaje copiado para compartir con la flota.';
+      this.setTemporarySuccess(
+        'operationsSuccess',
+        'Mensaje copiado para compartir con la flota.',
+      );
       this.operationsError = '';
     } catch {
       this.operationsError =
@@ -900,11 +1161,7 @@ export class Home {
     const role = localStorage.getItem('nautiflow_role');
     const accessToken = localStorage.getItem('nautiflow_access_token');
     const serializedUser = localStorage.getItem('nautiflow_user');
-    if (
-      !accessToken ||
-      (role !== 'owner' && role !== 'admin' && role !== 'passenger')
-    )
-      return;
+    if (!accessToken || (role !== 'owner' && role !== 'admin')) return;
     this.userRole = role;
     if (serializedUser) {
       try {
@@ -939,48 +1196,71 @@ export class Home {
         });
     } else if (this.userRole === 'admin') {
       this.loadAdminData();
-    } else if (this.userRole === 'passenger') {
-      this.loadPassengerBookings();
     }
-  }
-
-  private loadPassengerBookings(): void {
-    const token = this.getAccessToken();
-    if (!token) return;
-    this.http
-      .get<PassengerBooking[]>(`${this.apiUrl}/passengers/bookings`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      .subscribe({
-        next: (bookings) => {
-          this.passengerBookings = bookings;
-          for (const booking of bookings) {
-            this.feedbackDrafts[booking.id] ??= { rating: 5, comment: '' };
-          }
-        },
-        error: (error: HttpErrorResponse) => {
-          this.bookingError = this.messageFromError(error);
-        },
-      });
   }
 
   private loadAdminData(): void {
     const token = this.getAccessToken();
     if (!token) return;
     const headers = { Authorization: `Bearer ${token}` };
+    this.isLoadingPendingBoats = true;
     this.http.get<AdminBoat[]>(`${this.apiUrl}/admin/boats/pending`, { headers }).subscribe({
-      next: (boats) => this.pendingBoats = boats,
-      error: (error: HttpErrorResponse) => this.accountError = this.messageFromError(error),
+      next: (boats) => {
+        this.pendingBoats = boats;
+        this.isLoadingPendingBoats = false;
+      },
+      error: (error: HttpErrorResponse) => {
+        this.isLoadingPendingBoats = false;
+        this.accountError = this.messageFromError(error);
+      },
     });
-    this.http.get<{ id: string; fullName: string; email: string }[]>(`${this.apiUrl}/admin/owners`, { headers }).subscribe({
-      next: (owners) => this.adminOwners = owners,
-      error: (error: HttpErrorResponse) => this.accountError = this.messageFromError(error),
-    });
-    this.http.get<AdminFleetBoat[]>(`${this.apiUrl}/admin/boats/active`, { headers }).subscribe({
-      next: (boats) => this.activeFleet = boats,
-      error: (error: HttpErrorResponse) => this.operationsError = this.messageFromError(error),
-    });
+    this.loadAdminUsers(headers);
+    this.loadActiveFleet(headers);
     this.loadEmptyLegs();
+    this.loadAdminTrips();
+  }
+
+  private loadActiveFleet(headers: { Authorization: string }): void {
+    this.isLoadingActiveFleet = true;
+    this.http
+      .get<AdminFleetBoat[]>(`${this.apiUrl}/admin/boats/active`, { headers })
+      .subscribe({
+        next: (boats) => {
+          this.activeFleet = boats.map((boat) => ({
+            ...boat,
+            availabilityWindows: boat.availabilityWindows ?? [],
+          }));
+          this.isLoadingActiveFleet = false;
+        },
+        error: (error: HttpErrorResponse) => {
+          this.isLoadingActiveFleet = false;
+          this.operationsError = this.messageFromError(error);
+        },
+      });
+  }
+
+  private loadAdminUsers(headers: { Authorization: string }): void {
+    this.isLoadingAdminUsers = true;
+    this.adminUsersError = '';
+    this.http
+      .get<AdminUser[]>(`${this.apiUrl}/admin/users`, { headers })
+      .subscribe({
+        next: (users) => {
+          this.adminUsers = users;
+          this.isLoadingAdminUsers = false;
+        },
+        error: (error: HttpErrorResponse) => {
+          this.adminUsers = [];
+          this.isLoadingAdminUsers = false;
+          this.adminUsersError = this.messageFromError(error);
+        },
+      });
+  }
+
+  reloadAdminUsers(): void {
+    const token = this.getAccessToken();
+    if (!token || this.userRole !== 'admin') return;
+    this.loadAdminUsers({ Authorization: 'Bearer ' + token });
   }
 
   private loadEmptyLegs(): void {
@@ -1021,7 +1301,7 @@ export class Home {
 
   requestPasswordReset(): void {
     this.forgotError = '';
-    this.forgotSuccess = '';
+    this.setTemporarySuccess('forgotSuccess', '');
     if (this.forgotForm.invalid) {
       this.forgotForm.markAllAsTouched();
       this.forgotError = 'Ingresa un email válido.';
@@ -1031,7 +1311,7 @@ export class Home {
     this.http.post<{ message: string }>(`${this.apiUrl}/owners/password/forgot`, this.forgotForm.getRawValue()).subscribe({
       next: (response) => {
         this.isForgotSubmitting = false;
-        this.forgotSuccess = response.message;
+        this.setTemporarySuccess('forgotSuccess', response.message);
         this.forgotForm.reset();
       },
       error: (error: HttpErrorResponse) => {
@@ -1045,7 +1325,7 @@ export class Home {
   openDocumentsModal(): void {
     this.activeModal = null;
     this.documentsError = '';
-    this.documentsSuccess = '';
+    this.setTemporarySuccess('documentsSuccess', '');
     this.showDocumentsModal = true;
   }
 
@@ -1069,7 +1349,7 @@ export class Home {
   uploadDocuments(): void {
     if (this.isUploadingDocuments) return;
     this.documentsError = '';
-    this.documentsSuccess = '';
+    this.setTemporarySuccess('documentsSuccess', '');
     if (!this.registeredBoat) {
       this.documentsError = 'Primero debes registrar una lancha.';
       return;
@@ -1085,11 +1365,13 @@ export class Home {
     this.boatsService.uploadDocuments(this.registeredBoat.id, formData).subscribe({
       next: (documents) => {
         this.isUploadingDocuments = false;
-        this.documentsSuccess = 'Archivos cargados exitosamente. Quedaron pendientes de revisión.';
+        this.setTemporarySuccess(
+          'documentsSuccess',
+          'Archivos cargados exitosamente. Quedaron pendientes de revisión.',
+        );
         this.refreshOwnerBoatDocuments(documents);
         if (
           this.activeModal === 'register' &&
-          this.registrationRole === 'owner' &&
           this.currentStep === 3
         ) {
           this.currentStep = 4;
@@ -1127,17 +1409,20 @@ export class Home {
     this.selectedImage = undefined;
     this.selectedDocuments = {};
     this.errorMessage = '';
-    this.successMessage = '';
-    this.documentsSuccess = '';
+    this.setTemporarySuccess('successMessage', '');
+    this.setTemporarySuccess('documentsSuccess', '');
     this.imageError = '';
   }
 
   private continueToDocuments(boat: BoatResponse, imageUploaded = false): void {
     this.isSubmitting = false;
     this.currentStep = 3;
-    this.successMessage = imageUploaded
-      ? `La lancha ${boat.name} y su imagen fueron cargadas. Ahora carga la documentación requerida.`
-      : `La lancha ${boat.name} fue registrada. Ahora carga la documentación requerida.`;
+    this.setTemporarySuccess(
+      'successMessage',
+      imageUploaded
+        ? `La lancha ${boat.name} y su imagen fueron cargadas. Ahora carga la documentación requerida.`
+        : `La lancha ${boat.name} fue registrada. Ahora carga la documentación requerida.`,
+    );
   }
 
   private refreshOwnerBoatDocuments(documents: BoatDocument[]): void {
@@ -1157,8 +1442,23 @@ export class Home {
   }
 
   private messageFromError(error: HttpErrorResponse): string {
+    if (error.status === 401) {
+      return 'Tu sesión no es válida o venció. Inicia sesión nuevamente.';
+    }
+    if (error.status === 0) {
+      return 'No se pudo conectar con el backend. Verifica que el servidor esté iniciado e inténtalo nuevamente.';
+    }
+
     const message = error.error?.message;
     return Array.isArray(message) ? message.join(' ') : message || 'No se pudo completar la operación. Verifica la conexión con el backend.';
+  }
+
+  private loginMessageFromError(error: HttpErrorResponse): string {
+    if (error.status === 401) {
+      return 'El correo o la contraseña no son correctos.';
+    }
+
+    return this.messageFromError(error);
   }
 
   private applyServerError(form: FormGroup, message: string): void {
