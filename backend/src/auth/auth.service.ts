@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { scrypt, timingSafeEqual } from 'node:crypto';
@@ -29,6 +29,8 @@ function deriveKey(password: string, salt: string): Promise<Buffer> {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     @InjectRepository(Owner)
     private readonly ownersRepository: Repository<Owner>,
@@ -43,14 +45,10 @@ export class AuthService {
     return this.loginWithRole(emailAddress, password, 'owner');
   }
 
-  async loginPassenger(emailAddress: string, password: string) {
-    return this.loginWithRole(emailAddress, password, 'passenger');
-  }
-
   private async loginWithRole(
     emailAddress: string,
     password: string,
-    role: 'admin' | 'owner' | 'passenger',
+    role: 'admin' | 'owner',
   ) {
     const email = emailAddress.trim().toLowerCase();
     const account = await this.ownersRepository
@@ -65,6 +63,13 @@ export class AuthService {
       !account.passwordHash ||
       !(await this.passwordMatches(password, account.passwordHash))
     ) {
+      this.logger.warn(
+        JSON.stringify({
+          event: 'auth.login.failed',
+          role,
+          email: this.maskEmail(email),
+        }),
+      );
       throw new UnauthorizedException('Email o contraseña incorrectos');
     }
 
@@ -74,6 +79,13 @@ export class AuthService {
       expiresIn: JWT_EXPIRES_IN_SECONDS,
       issuer: JWT_ISSUER,
     });
+    this.logger.log(
+      JSON.stringify({
+        event: 'auth.login.succeeded',
+        role,
+        email: this.maskEmail(email),
+      }),
+    );
 
     const user = {
       id: account.id,
@@ -95,6 +107,13 @@ export class AuthService {
           expiresIn: JWT_EXPIRES_IN_SECONDS,
           user,
         };
+  }
+
+  private maskEmail(email: string): string {
+    const [localPart, domain] = email.split('@');
+    if (!localPart || !domain) return '[invalid-email]';
+
+    return `${localPart[0]}***@${domain[0]}***`;
   }
 
   private async passwordMatches(

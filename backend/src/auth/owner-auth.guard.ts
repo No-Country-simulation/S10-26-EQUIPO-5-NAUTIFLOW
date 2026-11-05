@@ -27,17 +27,17 @@ export class OwnerAuthGuard implements CanActivate {
       request.headers.authorization?.split(' ') ?? [];
 
     if (scheme !== 'Bearer' || !token || extraParts.length > 0) {
-      throw new UnauthorizedException('Se requiere un token Bearer');
+      throw new UnauthorizedException();
     }
 
     try {
       request.user = await this.jwtService.verifyAsync<OwnerTokenPayload>(token);
     } catch {
-      throw new UnauthorizedException('El token es inválido o venció');
+      throw new UnauthorizedException();
     }
 
     if (!request.user.sub) {
-      throw new UnauthorizedException('El token no identifica al usuario');
+      throw new UnauthorizedException();
     }
     if (request.user.role !== 'owner') {
       throw new ForbiddenException('Se requiere una cuenta de lanchero');

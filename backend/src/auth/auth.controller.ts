@@ -16,8 +16,4 @@ export class AuthController {
     return this.authService.loginOwner(dto.email, dto.password);
   }
 
-  @Post('passenger-login')
-  loginPassenger(@Body() dto: AdminLoginDto) {
-    return this.authService.loginPassenger(dto.email, dto.password);
-  }
 }

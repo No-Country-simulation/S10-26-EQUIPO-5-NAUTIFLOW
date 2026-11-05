@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -29,8 +30,15 @@ export class AdminController {
   constructor(private readonly adminService: AdminService) {}
 
   @Get('owners')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate')
   listOwners() {
     return this.adminService.listOwners();
+  }
+
+  @Get('users')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate')
+  listUsers() {
+    return this.adminService.listUsers();
   }
 
   @Post('boats')
@@ -44,6 +52,7 @@ export class AdminController {
   }
 
   @Get('boats/active')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate')
   listActiveBoats() {
     return this.adminService.listActiveBoats();
   }
